@@ -22,6 +22,17 @@ Guidance for coding agents and contributors working in this repository.
 - Preserve filesystem sandbox guarantees and role-based access controls.
 - Treat protocol/security changes as high-risk and require tests.
 
+## Testing and CI Policy
+
+- This project MUST use GitHub Actions for automated testing on pull requests and pushes to `develop`.
+- Test strategy MUST include all three layers:
+	- Unit tests: validate isolated functions, utilities, and small components.
+	- Integration tests: validate interactions between modules, API handlers, storage, and protocol flows.
+	- System tests: validate end-to-end behavior for host and guest workflows under realistic conditions.
+- Pull requests SHOULD include or update tests for changed behavior.
+- Changes that affect protocol, security, permissions, filesystem access, or conflict handling MUST include integration or system test coverage.
+- Failing checks in any required test layer MUST block merge until resolved.
+
 ## Documentation Pointers
 
 - Product spec: `_project/spec/spec.md`

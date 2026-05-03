@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------
+  # Layer 1: Unit Tests
+  # Validates isolated functions, utilities, and small components.
+  # ------------------------------------------------------------
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit tests
+        run: flutter test test/unit/ --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: coverage/lcov.info
+          retention-days: 7
+
+  # ------------------------------------------------------------
+  # Layer 2: Integration Tests
+  # Validates interactions between modules, API handlers, storage,
+  # and protocol flows.
+  # ------------------------------------------------------------
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run integration tests
+        run: flutter test test/integration/
+
+  # ------------------------------------------------------------
+  # Layer 3: System Tests
+  # Validates end-to-end host and guest workflows under realistic
+  # conditions including pairing, browse, transfer, and conflict.
+  # ------------------------------------------------------------
+  system:
+    name: System Tests
+    runs-on: ubuntu-latest
+    needs: integration
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run system tests
+        run: flutter test test/system/
