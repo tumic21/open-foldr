@@ -1,0 +1,38 @@
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dart and Flutter
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+
+# Flutter platform and generated artifacts
+**/android/.gradle/
+**/android/local.properties
+**/ios/Pods/
+**/ios/.symlinks/
+**/macos/Pods/
+**/windows/flutter/
+**/linux/flutter/
+**/web/flutter_service_worker.js
+**/web/flutter_bootstrap.js
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Coverage
+coverage/
+
+
+_project
