@@ -24,8 +24,6 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   List<Map<String, dynamic>> _roots = [];
   bool _loading = false;
   bool _requiresNewCode = false;
-  bool _awaitingApproval = false;
-  String? _pendingRequestId;
 
   String get _base => 'http://${widget.hostAddress}:${widget.port}/v1';
 
@@ -40,8 +38,6 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       _loading = true;
       _error = null;
       _requiresNewCode = false;
-      _awaitingApproval = false;
-      _pendingRequestId = null;
     });
     try {
       // Step 1: request pairing
@@ -78,11 +74,23 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
           (jsonDecode(reqRes.body) as Map<String, dynamic>)['pairRequestId']
               as String;
 
-      setState(() {
-        _pendingRequestId = requestId;
-        _awaitingApproval = true;
-        _loading = false;
-      });
+      final completeRes = await http.post(
+        Uri.parse('$_base/auth/pair/complete'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({'pairRequestId': requestId}),
+      );
+      if (completeRes.statusCode != 200) {
+        final body = jsonDecode(completeRes.body) as Map<String, dynamic>;
+        final err = body['error'] as Map<String, dynamic>?;
+        throw Exception(err?['message'] ?? 'Pairing complete failed');
+      }
+
+      final token =
+          (jsonDecode(completeRes.body) as Map<String, dynamic>)['sessionToken']
+              as String;
+
+      setState(() => _sessionToken = token);
+      await _loadRoots();
     } on _PairingCodeException catch (e) {
       setState(() {
         _error = e.message;
@@ -93,66 +101,6 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       setState(() {
         _error = e.toString();
         _loading = false;
-      });
-    }
-  }
-
-  Future<void> _completePendingPair() async {
-    final requestId = _pendingRequestId;
-    if (requestId == null) {
-      setState(() {
-        _awaitingApproval = false;
-        _error = 'Pair request missing. Please retry connection.';
-      });
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final completeRes = await http.post(
-        Uri.parse('$_base/auth/pair/complete'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({'pairRequestId': requestId}),
-      );
-
-      if (completeRes.statusCode == 200) {
-        final token =
-            (jsonDecode(completeRes.body)
-                    as Map<String, dynamic>)['sessionToken']
-                as String;
-        setState(() {
-          _sessionToken = token;
-          _awaitingApproval = false;
-          _pendingRequestId = null;
-        });
-        await _loadRoots();
-        return;
-      }
-
-      final body = jsonDecode(completeRes.body) as Map<String, dynamic>;
-      final err = body['error'] as Map<String, dynamic>?;
-      final code = err?['code'] as String?;
-      final message = err?['message'] as String? ?? 'Pairing complete failed';
-
-      if (completeRes.statusCode == 403 && code == 'FORBIDDEN') {
-        setState(() => _loading = false);
-        return;
-      }
-
-      setState(() {
-        _loading = false;
-        _awaitingApproval = false;
-        _error = message;
-      });
-    } catch (e) {
-      setState(() {
-        _loading = false;
-        _awaitingApproval = false;
-        _error = e.toString();
       });
     }
   }
@@ -216,38 +164,6 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                   )
                 else
                   FilledButton(onPressed: _pair, child: const Text('Retry')),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_awaitingApproval) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Waiting for Host Approval')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.verified_user, size: 48, color: Colors.orange),
-                const SizedBox(height: 16),
-                const Text(
-                  'Pair request sent. Approve this device on the host app.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _loading ? null : _completePendingPair,
-                  child: const Text('I approved on host, continue'),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _loading ? null : () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
               ],
             ),
           ),

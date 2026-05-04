@@ -23,7 +23,7 @@ Handler healthHandler() {
 
 // ─── Pairing ─────────────────────────────────────────────────────────────────
 
-/// Pending pair requests waiting for host approval.
+/// Pending pair requests waiting for completion.
 final Map<String, PairRequest> _pendingRequests = {};
 
 Handler pairRequestHandler(PairingManager pairing) {
@@ -60,10 +60,10 @@ Handler pairRequestHandler(PairingManager pairing) {
       deviceName: deviceName,
       fingerprint: fingerprint,
       ip: ip,
-    );
+    )..approved = true;
 
     return Response.ok(
-      jsonEncode({'pairRequestId': requestId, 'approval': 'pending'}),
+      jsonEncode({'pairRequestId': requestId, 'approval': 'auto'}),
       headers: _json,
     );
   };
@@ -86,10 +86,6 @@ Handler pairCompleteHandler(TokenStore tokens) {
         'NOT_FOUND',
         'Pair request not found or already consumed',
       );
-    }
-
-    if (!pending.approved) {
-      return _error(403, 'FORBIDDEN', 'Host has not approved this device');
     }
 
     final result = tokens.issue(

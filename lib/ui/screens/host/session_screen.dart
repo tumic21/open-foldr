@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants.dart';
-import '../../../models/role.dart';
-import '../../../server/handlers/handlers.dart';
 import '../../../server/server.dart';
 import '../../../server/activity/activity_log.dart';
 
@@ -61,26 +59,9 @@ class _SessionScreenState extends State<SessionScreen> {
     Navigator.pop(context);
   }
 
-  void _approveRequest(String requestId, Role role) {
-    approvePairRequest(requestId, role: role);
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Approved device as ${role.displayName}')),
-    );
-  }
-
-  void _denyRequest(String requestId) {
-    denyPairRequest(requestId);
-    setState(() {});
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Pairing request denied')));
-  }
-
   @override
   Widget build(BuildContext context) {
     final devices = widget.server.tokens.devices;
-    final pending = pendingPairRequests;
 
     return Scaffold(
       appBar: AppBar(
@@ -172,49 +153,6 @@ class _SessionScreenState extends State<SessionScreen> {
               ),
             ),
           ),
-
-          if (pending.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pending Device Approvals (${pending.length})',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      ...pending.map(
-                        (req) => ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.devices),
-                          title: Text(req.deviceName),
-                          subtitle: Text(req.ip),
-                          trailing: Wrap(
-                            spacing: 6,
-                            children: [
-                              TextButton(
-                                onPressed: () =>
-                                    _approveRequest(req.id, Role.viewer),
-                                child: const Text('Approve'),
-                              ),
-                              TextButton(
-                                onPressed: () => _denyRequest(req.id),
-                                child: const Text('Deny'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
 
           ...widget.server.roots.all.map(
             (r) => ListTile(

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_foldr/server/server.dart';
 import 'package:open_foldr/server/handlers/handlers.dart';
-import 'package:open_foldr/models/role.dart';
 
 void main() {
   late OpenFoldrServer server;
@@ -47,8 +46,6 @@ void main() {
       expect(reqRes.statusCode, 200);
       final requestId = (jsonDecode(reqRes.body))['pairRequestId'] as String;
 
-      approvePairRequest(requestId, role: Role.viewer);
-
       final completeRes = await http.post(
         Uri.parse('$base/auth/pair/complete'),
         headers: {'content-type': 'application/json'},
@@ -61,7 +58,7 @@ void main() {
       expect(body['role'], 'viewer');
     });
 
-    test('denied pair request returns 403', () async {
+    test('denied pair request returns 404', () async {
       final secret = server.pairing.generateSecret();
       final reqRes = await http.post(
         Uri.parse('$base/auth/pair/request'),
