@@ -7,6 +7,7 @@ import '../pairing/pairing_manager.dart';
 import '../pairing/token_store.dart';
 import '../roots/root_registry.dart';
 import '../../core/result.dart';
+import '../../core/host_identity.dart';
 import '../activity/activity_log.dart';
 import '../../models/role.dart';
 
@@ -16,7 +17,11 @@ final _uuid = const Uuid();
 
 Handler healthHandler() {
   return (Request _) => Response.ok(
-    jsonEncode({'status': 'ok', 'version': 'v1'}),
+    jsonEncode({
+      'status': 'ok',
+      'version': 'v1',
+      'host': {'id': HostIdentity.id, 'name': HostIdentity.name},
+    }),
     headers: _json,
   );
 }

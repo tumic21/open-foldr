@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants.dart';
+import '../../../core/host_identity.dart';
 import '../../../server/server.dart';
 import '../../../server/activity/activity_log.dart';
 
@@ -62,6 +63,7 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   Widget build(BuildContext context) {
     final devices = widget.server.tokens.devices;
+    final hostName = HostIdentity.name;
 
     return Scaffold(
       appBar: AppBar(
@@ -102,6 +104,20 @@ class _SessionScreenState extends State<SessionScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    const Text(
+                      'Host Name',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      hostName,
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
                     const Text(
                       'Pairing Code',
                       style: TextStyle(fontWeight: FontWeight.bold),

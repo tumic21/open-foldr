@@ -17,8 +17,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   // Manual connect fields
   final _ipController = TextEditingController();
-  final _portController =
-      TextEditingController(text: '${AppConstants.defaultPort}');
+  final _portController = TextEditingController(
+    text: '${AppConstants.defaultPort}',
+  );
   final _secretController = TextEditingController();
 
   @override
@@ -40,7 +41,12 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       _scanning = true;
       _hosts = [];
     });
-    final found = await _scanner.scan();
+    final found = await _scanner.scan(
+      onUpdate: (hosts) {
+        if (!mounted) return;
+        setState(() => _hosts = hosts);
+      },
+    );
     if (!mounted) return;
     setState(() {
       _hosts = found;
@@ -54,18 +60,17 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     final secret = _secretController.text.trim();
     if (ip.isEmpty || port == null || secret.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('IP, port, and pairing code are required')),
+        const SnackBar(
+          content: Text('IP, port, and pairing code are required'),
+        ),
       );
       return;
     }
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ExplorerScreen(
-          hostAddress: ip,
-          port: port,
-          pairingSecret: secret,
-        ),
+        builder: (_) =>
+            ExplorerScreen(hostAddress: ip, port: port, pairingSecret: secret),
       ),
     );
   }
@@ -106,23 +111,49 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // Discovered hosts
-          Text('Discovered on LAN',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Discovered on LAN',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(height: 8),
-          if (_scanning)
+          if (_hosts.isEmpty && _scanning)
             const Center(child: CircularProgressIndicator())
           else if (_hosts.isEmpty)
-            const Text('No hosts found. Try manual connect below.',
-                style: TextStyle(color: Colors.grey))
+            const Text(
+              'No hosts found. Try manual connect below.',
+              style: TextStyle(color: Colors.grey),
+            )
           else
-            ..._hosts.map(
-              (h) => ListTile(
-                leading: const Icon(Icons.computer),
-                title: Text(h.name),
-                subtitle: Text('${h.address}:${h.port}'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => _connectDiscovered(h),
-              ),
+            Column(
+              children: [
+                if (_scanning)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Scanning... found hosts are shown immediately',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ..._hosts.map(
+                  (h) => ListTile(
+                    leading: const Icon(Icons.computer),
+                    title: Text(h.name),
+                    subtitle: Text('${h.address}:${h.port}'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => _connectDiscovered(h),
+                  ),
+                ),
+              ],
             ),
 
           const SizedBox(height: 24),
@@ -130,8 +161,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           const SizedBox(height: 16),
 
           // Manual connect
-          Text('Manual Connect',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text('Manual Connect', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           TextField(
             controller: _ipController,
@@ -159,10 +189,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _connectManual,
-            child: const Text('Connect'),
-          ),
+          FilledButton(onPressed: _connectManual, child: const Text('Connect')),
         ],
       ),
     );
@@ -198,10 +225,13 @@ class _PairingDialogState extends State<_PairingDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
-            onPressed: () => Navigator.pop(context, _ctrl.text),
-            child: const Text('Connect')),
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: const Text('Connect'),
+        ),
       ],
     );
   }
