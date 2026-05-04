@@ -17,4 +17,13 @@ class SharedRoot {
         'path': localPath,
         'minimumRole': minimumRole.name,
       };
+
+  factory SharedRoot.fromJson(Map<String, dynamic> json) => SharedRoot(
+        alias: json['alias'] as String,
+        localPath: json['path'] as String,
+        minimumRole: Role.values.firstWhere(
+          (r) => r.name == json['minimumRole'],
+          orElse: () => Role.viewer,
+        ),
+      );
 }

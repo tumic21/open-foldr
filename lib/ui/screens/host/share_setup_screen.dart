@@ -28,7 +28,9 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
 
   String _deriveAlias(String path) {
     final base = path.split(Platform.pathSeparator).last;
-    var candidate = base.replaceAll(RegExp(r'[^a-z0-9_-]', caseSensitive: false), '-').toLowerCase();
+    var candidate = base
+        .replaceAll(RegExp(r'[^a-z0-9_-]', caseSensitive: false), '-')
+        .toLowerCase();
     final existing = _entries.map((e) => e.alias).toSet();
     var suffix = 0;
     var unique = candidate;
@@ -40,16 +42,17 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
   }
 
   Future<void> _startSession() async {
-    if (_entries.isEmpty) return;
     setState(() => _starting = true);
 
     final server = OpenFoldrServer();
     for (final entry in _entries) {
-      server.roots.register(SharedRoot(
-        alias: entry.alias,
-        localPath: entry.path,
-        minimumRole: entry.role,
-      ));
+      server.roots.register(
+        SharedRoot(
+          alias: entry.alias,
+          localPath: entry.path,
+          minimumRole: entry.role,
+        ),
+      );
     }
 
     try {
@@ -62,9 +65,9 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
     } catch (e) {
       setState(() => _starting = false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to start server: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to start server: $e')));
     }
   }
 
@@ -91,18 +94,22 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
                             DropdownButton<Role>(
                               value: e.role,
                               items: Role.values
-                                  .map((r) => DropdownMenuItem(
-                                        value: r,
-                                        child: Text(r.displayName),
-                                      ))
+                                  .map(
+                                    (r) => DropdownMenuItem(
+                                      value: r,
+                                      child: Text(r.displayName),
+                                    ),
+                                  )
                                   .toList(),
                               onChanged: (r) {
                                 if (r == null) return;
-                                setState(() => _entries[i] = _RootEntry(
-                                      path: e.path,
-                                      alias: e.alias,
-                                      role: r,
-                                    ));
+                                setState(
+                                  () => _entries[i] = _RootEntry(
+                                    path: e.path,
+                                    alias: e.alias,
+                                    role: r,
+                                  ),
+                                );
                               },
                             ),
                             IconButton(
@@ -128,8 +135,7 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
                 ),
                 const SizedBox(height: 8),
                 FilledButton(
-                  onPressed:
-                      (_entries.isEmpty || _starting) ? null : _startSession,
+                  onPressed: _starting ? null : _startSession,
                   child: _starting
                       ? const SizedBox(
                           height: 20,

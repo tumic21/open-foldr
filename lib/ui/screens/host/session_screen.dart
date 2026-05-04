@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants.dart';
 import '../../../core/host_identity.dart';
+import '../../../core/session_store.dart';
+import '../../../models/role.dart';
+import '../../../models/shared_root.dart';
 import '../../../server/server.dart';
 import '../../../server/activity/activity_log.dart';
 
@@ -20,6 +26,61 @@ class _SessionScreenState extends State<SessionScreen> {
   late String _secret;
   late int _secondsLeft;
   Timer? _expiryTimer;
+
+  InlineSpan get _roleTooltipMessage => TextSpan(
+        style: const TextStyle(color: Colors.white, height: 1.5),
+        children: const [
+          TextSpan(
+            text: 'Role Permissions\n',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          TextSpan(
+            text: 'Role      Read   Write   Delete   Admin\n',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: 'Viewer    Yes    No      No       No\n',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+          TextSpan(
+            text: 'Editor    Yes    Yes     No       No\n',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+          TextSpan(
+            text: 'Owner     Yes    Yes     Yes      Yes',
+            style: TextStyle(fontFamily: 'monospace'),
+          ),
+        ],
+      );
+
+  Widget _buildRoleTooltip(Widget child) {
+    return Tooltip(
+      richMessage: _roleTooltipMessage,
+      waitDuration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      margin: const EdgeInsets.all(12),
+      verticalOffset: 16,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade900,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
 
   @override
   void initState() {
@@ -60,10 +121,71 @@ class _SessionScreenState extends State<SessionScreen> {
     Navigator.pop(context);
   }
 
+  Future<void> _addSharedFolder() async {
+    final pickedPath = await FilePicker.platform.getDirectoryPath();
+    if (pickedPath == null) return;
+
+    final alias = _deriveAlias(pickedPath);
+    try {
+      widget.server.roots.register(
+        SharedRoot(
+          alias: alias,
+          localPath: pickedPath,
+          minimumRole: Role.viewer,
+        ),
+      );
+      await SessionStore.saveRoots(widget.server.roots.all);
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to add folder: $e')));
+    }
+  }
+
+  void _removeSharedFolder(String alias) {
+    widget.server.roots.unregister(alias);
+    SessionStore.saveRoots(widget.server.roots.all);
+    setState(() {});
+  }
+
+  void _changeMinimumRole(SharedRoot root, Role role) {
+    widget.server.roots.unregister(root.alias);
+    widget.server.roots.register(
+      SharedRoot(
+        alias: root.alias,
+        localPath: root.localPath,
+        minimumRole: role,
+      ),
+    );
+    SessionStore.saveRoots(widget.server.roots.all);
+    setState(() {});
+  }
+
+  String _deriveAlias(String path) {
+    final base = path.split(Platform.pathSeparator).last;
+    var candidate = base
+        .replaceAll(RegExp(r'[^a-z0-9_-]', caseSensitive: false), '-')
+        .toLowerCase();
+    if (candidate.isEmpty) candidate = 'share';
+
+    final existing = widget.server.roots.all.map((e) => e.alias).toSet();
+    var suffix = 0;
+    var unique = candidate;
+    while (existing.contains(unique)) {
+      suffix++;
+      unique = '$candidate$suffix';
+    }
+    return unique;
+  }
+
   @override
   Widget build(BuildContext context) {
     final devices = widget.server.tokens.devices;
     final hostName = HostIdentity.name;
+    final sharedRoots = widget.server.roots.all;
 
     return Scaffold(
       appBar: AppBar(
@@ -161,26 +283,79 @@ class _SessionScreenState extends State<SessionScreen> {
           // Shared roots
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Shared folders',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Shared folders',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _addSharedFolder,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Folder'),
+                ),
+              ],
             ),
           ),
 
-          ...widget.server.roots.all.map(
-            (r) => ListTile(
-              leading: const Icon(Icons.folder_shared),
-              title: Text(r.alias),
-              subtitle: Text(r.localPath),
-              trailing: Text(
-                r.minimumRole.displayName,
-                style: const TextStyle(color: Colors.grey),
+          if (sharedRoots.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'No shared folders yet. Add one to start sharing files.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else
+            ...sharedRoots.map(
+              (r) => ListTile(
+                leading: const Icon(Icons.folder_shared),
+                title: Text(r.alias),
+                subtitle: Text(r.localPath),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildRoleTooltip(
+                      DropdownButton<Role>(
+                        value: r.minimumRole,
+                        items: Role.values
+                            .map(
+                              (role) => DropdownMenuItem(
+                                value: role,
+                                child: Text(role.displayName),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (role) {
+                          if (role == null) return;
+                          _changeMinimumRole(r, role);
+                        },
+                      ),
+                    ),
+                    _buildRoleTooltip(
+                      const Padding(
+                        padding: EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 18,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Remove shared folder',
+                      onPressed: () => _removeSharedFolder(r.alias),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
           const Divider(),
 
