@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'file_preview_screen.dart';
 
 class ExplorerScreen extends StatefulWidget {
@@ -243,9 +246,12 @@ class _BrowseScreen extends StatefulWidget {
 }
 
 class _BrowseScreenState extends State<_BrowseScreen> {
+  static const _downloadFolderPrefKey = 'guest.downloadFolder';
+
   List<Map<String, dynamic>> _entries = [];
   bool _loading = true;
   String? _error;
+  String? _downloadFolder;
 
   bool get _canWrite => widget.role == 'editor' || widget.role == 'owner';
   bool get _canDelete => widget.role == 'owner';
@@ -254,6 +260,95 @@ class _BrowseScreenState extends State<_BrowseScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadDownloadFolder();
+  }
+
+  String _defaultDownloadFolder() {
+    final home =
+        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+    if (home.isEmpty) return 'Downloads/OpenFoldr';
+    return p.join(home, 'Downloads', 'OpenFoldr');
+  }
+
+  Future<void> _loadDownloadFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final configured = prefs.getString(_downloadFolderPrefKey);
+    if (!mounted) return;
+    setState(() {
+      _downloadFolder = configured ?? _defaultDownloadFolder();
+    });
+  }
+
+  Future<void> _saveDownloadFolder(String folder) async {
+    final normalized = folder.trim();
+    if (normalized.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_downloadFolderPrefKey, normalized);
+    if (!mounted) return;
+    setState(() {
+      _downloadFolder = normalized;
+    });
+  }
+
+  Future<void> _showSettingsDialog() async {
+    final initialFolder = _downloadFolder ?? _defaultDownloadFolder();
+    final controller = TextEditingController(text: initialFolder);
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Download folder'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  hintText: '~/Downloads/OpenFoldr',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    final selected = await FilePicker.platform.getDirectoryPath();
+                    if (selected != null && selected.isNotEmpty) {
+                      controller.text = selected;
+                    }
+                  },
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Choose Folder'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldSave == true) {
+      await _saveDownloadFolder(controller.text);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download folder set to ${controller.text.trim()}')),
+      );
+    }
   }
 
   Future<void> _load() async {
@@ -576,8 +671,18 @@ class _BrowseScreenState extends State<_BrowseScreen> {
 
     if (!mounted) return;
     if (res.statusCode == 200) {
+      final downloadFolder = _downloadFolder ?? _defaultDownloadFolder();
+      final directory = Directory(downloadFolder);
+      if (!directory.existsSync()) {
+        await directory.create(recursive: true);
+      }
+
+      final fileName = p.basename(name.isNotEmpty ? name : remotePath);
+      final outputPath = p.join(downloadFolder, fileName);
+      await File(outputPath).writeAsBytes(res.bodyBytes, flush: true);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloaded $name (${res.bodyBytes.length} bytes)')),
+        SnackBar(content: Text('Saved to $outputPath')),
       );
     } else {
       _showError('Download failed: ${res.statusCode}');
@@ -597,7 +702,16 @@ class _BrowseScreenState extends State<_BrowseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.alias}${widget.path}')),
+      appBar: AppBar(
+        title: Text('${widget.alias}${widget.path}'),
+        actions: [
+          IconButton(
+            onPressed: _showSettingsDialog,
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings),
+          ),
+        ],
+      ),
       floatingActionButton: _canWrite
           ? FloatingActionButton(
               onPressed: _uploadNewFile,
@@ -612,7 +726,12 @@ class _BrowseScreenState extends State<_BrowseScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: _entries.isEmpty
-                      ? const Center(child: Text('Empty folder'))
+                      ? ListView(
+                          children: const [
+                            SizedBox(height: 120),
+                            Center(child: Text('Empty folder')),
+                          ],
+                        )
                       : ListView.builder(
                           itemCount: _entries.length,
                           itemBuilder: (_, i) {

@@ -17,6 +17,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('browse_test_');
     File('${tempDir.path}/hello.txt').writeAsStringSync('hello');
     Directory('${tempDir.path}/sub').createSync();
+    File('${tempDir.path}/sub/world.txt').writeAsStringSync('world');
 
     server = OpenFoldrServer(port: port);
     server.roots.register(SharedRoot(
@@ -121,6 +122,44 @@ void main() {
       );
       expect(res.statusCode, 200);
       expect(res.body, 'hello');
+    });
+
+    test('entries in subdirectory return root-relative paths', () async {
+      final uri = Uri.parse('$base/roots/test/entries')
+          .replace(queryParameters: {'path': '/sub'});
+      final res = await http.get(
+        uri,
+        headers: {'authorization': 'Bearer $sessionToken'},
+      );
+      expect(res.statusCode, 200);
+      final entries = (jsonDecode(res.body))['entries'] as List;
+      final file = entries.firstWhere((e) => e['name'] == 'world.txt');
+      // Path must be root-relative, not subdirectory-relative.
+      expect(file['path'], '/sub/world.txt');
+    });
+
+    test('can download file using path returned from subdirectory entries', () async {
+      // Step 1: browse /sub and get path from server response.
+      final entriesUri = Uri.parse('$base/roots/test/entries')
+          .replace(queryParameters: {'path': '/sub'});
+      final entriesRes = await http.get(
+        entriesUri,
+        headers: {'authorization': 'Bearer $sessionToken'},
+      );
+      expect(entriesRes.statusCode, 200);
+      final entries = (jsonDecode(entriesRes.body))['entries'] as List;
+      final file = entries.firstWhere((e) => e['name'] == 'world.txt');
+      final filePath = file['path'] as String;
+
+      // Step 2: download using the exact path the server returned.
+      final downloadUri = Uri.parse('$base/roots/test/file')
+          .replace(queryParameters: {'path': filePath});
+      final downloadRes = await http.get(
+        downloadUri,
+        headers: {'authorization': 'Bearer $sessionToken'},
+      );
+      expect(downloadRes.statusCode, 200);
+      expect(downloadRes.body, 'world');
     });
 
     test('path traversal is rejected', () async {

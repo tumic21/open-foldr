@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:uuid/uuid.dart';
@@ -190,9 +191,10 @@ Handler entriesHandler(RootRegistry registry, ActivityLog log) {
     final entries = <Map<String, dynamic>>[];
     for (final entity in dir.listSync()) {
       final stat = entity.statSync();
-      final relPath = entity.path.substring(resolved.unwrap.length);
+      final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+      final relPath = p.posix.normalize(p.posix.join(rawPath, name));
       entries.add({
-        'name': entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
+        'name': name,
         'kind': entity is Directory ? 'directory' : 'file',
         'size': stat.size,
         'modifiedAt': stat.modified.toUtc().toIso8601String(),
