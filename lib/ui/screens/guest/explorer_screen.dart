@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'file_preview_screen.dart';
 
 class ExplorerScreen extends StatefulWidget {
   final String hostAddress;
@@ -500,6 +501,7 @@ class _BrowseScreenState extends State<_BrowseScreen> {
     final remotePath = entry['path'] as String;
     final name = entry['name'] as String? ?? remotePath;
     final isDir = entry['kind'] == 'directory';
+    final size = entry['size'] as int? ?? 0;
 
     showModalBottomSheet<void>(
       context: context,
@@ -507,6 +509,26 @@ class _BrowseScreenState extends State<_BrowseScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.preview),
+              title: const Text('Preview'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FilePreviewScreen(
+                      base: widget.base,
+                      sessionToken: widget.sessionToken,
+                      alias: widget.alias,
+                      remotePath: remotePath,
+                      fileName: name,
+                      fileSize: size,
+                    ),
+                  ),
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.download),
               title: const Text('Download'),

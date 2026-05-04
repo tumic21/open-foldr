@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../server/server.dart';
 import '../../../core/session_store.dart';
-import '../../../models/shared_root.dart';
 import 'host/session_screen.dart';
 import 'guest/discovery_screen.dart';
 

@@ -229,9 +229,49 @@ Handler fileDownloadHandler(RootRegistry registry, ActivityLog log) {
       return _error(404, 'NOT_FOUND', 'File not found');
     }
 
+    final fileSize = file.lengthSync();
+    final rangeHeader = request.headers['range'];
+
+    // ── Range request (resumable download) ─────────────────────────────────
+    if (rangeHeader != null) {
+      final range = _parseRange(rangeHeader, fileSize);
+      if (range == null) {
+        return Response(
+          416,
+          headers: {
+            'content-range': 'bytes */$fileSize',
+            'content-type': 'application/json',
+          },
+          body: jsonEncode({
+            'error': {
+              'code': 'RANGE_NOT_SATISFIABLE',
+              'message': 'Invalid Range header',
+            },
+          }),
+        );
+      }
+      final (start, end) = range;
+      final length = end - start + 1;
+      return Response(
+        206,
+        body: file.openRead(start, end + 1),
+        headers: {
+          'content-type': 'application/octet-stream',
+          'content-range': 'bytes $start-$end/$fileSize',
+          'content-length': '$length',
+          'accept-ranges': 'bytes',
+        },
+      );
+    }
+
+    // ── Full download ───────────────────────────────────────────────────────
     return Response.ok(
       file.openRead(),
-      headers: {'content-type': 'application/octet-stream'},
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-length': '$fileSize',
+        'accept-ranges': 'bytes',
+      },
     );
   };
 }
@@ -331,4 +371,36 @@ class PairRequest {
     required this.fingerprint,
     required this.ip,
   });
+}
+
+/// Parses a `Range: bytes=<start>-<end>` header.
+/// Returns (start, end) inclusive, clamped to [0, fileSize-1].
+/// Returns null if the header is malformed or unsatisfiable.
+(int, int)? _parseRange(String header, int fileSize) {
+  if (fileSize == 0) return null;
+  final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(header.trim());
+  if (match == null) return null;
+  final startStr = match.group(1)!;
+  final endStr = match.group(2)!;
+
+  int start;
+  int end;
+
+  if (startStr.isEmpty && endStr.isEmpty) return null;
+
+  if (startStr.isEmpty) {
+    // Suffix range: bytes=-N  (last N bytes)
+    final n = int.tryParse(endStr);
+    if (n == null || n <= 0) return null;
+    start = fileSize - n < 0 ? 0 : fileSize - n;
+    end = fileSize - 1;
+  } else {
+    start = int.tryParse(startStr) ?? -1;
+    end = endStr.isEmpty ? fileSize - 1 : (int.tryParse(endStr) ?? -1);
+    if (start < 0 || end < 0) return null;
+    if (end >= fileSize) end = fileSize - 1;
+    if (start > end) return null;
+  }
+
+  return (start, end);
 }

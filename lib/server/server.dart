@@ -9,6 +9,7 @@ import 'roots/root_registry.dart';
 import 'activity/activity_log.dart';
 import 'handlers/handlers.dart';
 import 'handlers/write_handlers.dart';
+import 'handlers/resumable_handlers.dart';
 import '../core/constants.dart';
 
 /// The embedded HTTP server that runs on the host device.
@@ -49,7 +50,22 @@ class OpenFoldrServer {
       // Phase 2: write, delete, batch
       ..put('/v1/roots/<alias>/file', fileUploadHandler(roots, log))
       ..delete('/v1/roots/<alias>/file', fileDeleteHandler(roots, log))
-      ..post('/v1/roots/<alias>/batch/delete', batchDeleteHandler(roots, log));
+      ..post('/v1/roots/<alias>/batch/delete', batchDeleteHandler(roots, log))
+      // Phase 3: resumable upload protocol
+      ..post('/v1/roots/<alias>/upload/init', uploadInitHandler(roots))
+      ..patch('/v1/roots/<alias>/upload/<uploadId>', uploadChunkHandler(roots))
+      ..post(
+        '/v1/roots/<alias>/upload/<uploadId>/complete',
+        uploadCompleteHandler(roots, log),
+      )
+      ..get(
+        '/v1/roots/<alias>/upload/<uploadId>/offset',
+        uploadOffsetHandler(roots),
+      )
+      ..delete(
+        '/v1/roots/<alias>/upload/<uploadId>',
+        uploadCancelHandler(roots),
+      );
 
     final handler = const Pipeline()
         .addMiddleware(logRequests())

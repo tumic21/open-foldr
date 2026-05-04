@@ -6,7 +6,7 @@ import 'package:open_foldr/server/handlers/handlers.dart';
 
 void main() {
   late OpenFoldrServer server;
-  const port = 17433;
+  const port = 17436;
   const base = 'http://127.0.0.1:$port/v1';
 
   setUpAll(() async {
