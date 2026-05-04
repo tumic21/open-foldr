@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:uuid/uuid.dart';
@@ -258,10 +259,12 @@ Handler fileMetadataHandler(RootRegistry registry) {
     }
 
     final stat = file.statSync();
+    final versionToken = _computeVersionToken(stat);
     return Response.ok(
       jsonEncode({
         'size': stat.size,
         'modifiedAt': stat.modified.toUtc().toIso8601String(),
+        'versionToken': versionToken,
       }),
       headers: _json,
     );
@@ -272,12 +275,25 @@ Handler fileMetadataHandler(RootRegistry registry) {
 
 const _json = {'content-type': 'application/json'};
 
+/// Computes a lightweight version token from file stat fields.
+/// Does not read file content — uses last-modified time and size as etag.
+String _computeVersionToken(FileStat stat) {
+  final raw = '${stat.modified.microsecondsSinceEpoch}-${stat.size}';
+  return sha256.convert(utf8.encode(raw)).toString().substring(0, 16);
+}
+
+/// Public alias used by write handlers in the same package.
+String computeVersionToken(FileStat stat) => _computeVersionToken(stat);
+
 /// Strips the leading '/' from API paths before passing to PathGuard,
 /// which expects relative paths (not absolute).
-String _stripLeadingSlash(String path) {
+String stripLeadingSlash(String path) {
   if (path.startsWith('/')) return path.substring(1);
   return path;
 }
+
+// ignore: unused_element
+String _stripLeadingSlash(String path) => stripLeadingSlash(path);
 
 String _clientIp(Request request) =>
     request.headers['x-forwarded-for'] ??
