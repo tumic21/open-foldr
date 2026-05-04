@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.openfoldr.OpenFoldr</id>
+  <name>OpenFoldr</name>
+  <summary>Share and browse folders on your local network</summary>
+  <description>
+    <p>
+      OpenFoldr is a cross-platform LAN file sharing app that lets a host share
+      folders and guests browse them securely.
+    </p>
+  </description>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <launchable type="desktop-id">com.openfoldr.OpenFoldr.desktop</launchable>
+  <provides>
+    <binary>open_foldr</binary>
+  </provides>
+</component>

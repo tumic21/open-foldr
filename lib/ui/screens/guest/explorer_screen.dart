@@ -23,9 +23,11 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   String? _error;
   List<Map<String, dynamic>> _roots = [];
   bool _loading = false;
+  bool _requiresNewCode = false;
+  bool _awaitingApproval = false;
+  String? _pendingRequestId;
 
-  String get _base =>
-      'http://${widget.hostAddress}:${widget.port}/v1';
+  String get _base => 'http://${widget.hostAddress}:${widget.port}/v1';
 
   @override
   void initState() {
@@ -37,6 +39,9 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _requiresNewCode = false;
+      _awaitingApproval = false;
+      _pendingRequestId = null;
     });
     try {
       // Step 1: request pairing
@@ -50,33 +55,104 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
         }),
       );
       if (reqRes.statusCode != 200) {
-        final body = jsonDecode(reqRes.body);
-        throw Exception(body['error']['message'] ?? 'Pairing request failed');
+        final body = jsonDecode(reqRes.body) as Map<String, dynamic>;
+        final err = body['error'] as Map<String, dynamic>?;
+        final code = err?['code'] as String?;
+        final message = err?['message'] as String? ?? 'Pairing request failed';
+
+        if (code == 'NO_ACTIVE_SECRET' || code == 'SECRET_EXPIRED') {
+          throw _PairingCodeException(
+            'Pairing code is expired or already used. Ask host for a new code.',
+          );
+        }
+
+        if (code == 'INVALID_SECRET') {
+          throw _PairingCodeException(
+            'Pairing code is invalid. Check code and retry.',
+          );
+        }
+
+        throw Exception(message);
       }
       final requestId =
-          (jsonDecode(reqRes.body) as Map<String, dynamic>)['pairRequestId'];
+          (jsonDecode(reqRes.body) as Map<String, dynamic>)['pairRequestId']
+              as String;
 
-      // Step 2: wait for host approval then complete
-      // In Phase 1 we immediately try complete; host must have approved.
-      await Future.delayed(const Duration(seconds: 2));
+      setState(() {
+        _pendingRequestId = requestId;
+        _awaitingApproval = true;
+        _loading = false;
+      });
+    } on _PairingCodeException catch (e) {
+      setState(() {
+        _error = e.message;
+        _requiresNewCode = true;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _completePendingPair() async {
+    final requestId = _pendingRequestId;
+    if (requestId == null) {
+      setState(() {
+        _awaitingApproval = false;
+        _error = 'Pair request missing. Please retry connection.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
       final completeRes = await http.post(
         Uri.parse('$_base/auth/pair/complete'),
         headers: {'content-type': 'application/json'},
         body: jsonEncode({'pairRequestId': requestId}),
       );
-      if (completeRes.statusCode != 200) {
-        final body = jsonDecode(completeRes.body);
-        throw Exception(body['error']['message'] ?? 'Pairing complete failed');
-      }
-      final token = (jsonDecode(completeRes.body)
-          as Map<String, dynamic>)['sessionToken'] as String;
 
-      setState(() => _sessionToken = token);
-      await _loadRoots();
+      if (completeRes.statusCode == 200) {
+        final token =
+            (jsonDecode(completeRes.body)
+                    as Map<String, dynamic>)['sessionToken']
+                as String;
+        setState(() {
+          _sessionToken = token;
+          _awaitingApproval = false;
+          _pendingRequestId = null;
+        });
+        await _loadRoots();
+        return;
+      }
+
+      final body = jsonDecode(completeRes.body) as Map<String, dynamic>;
+      final err = body['error'] as Map<String, dynamic>?;
+      final code = err?['code'] as String?;
+      final message = err?['message'] as String? ?? 'Pairing complete failed';
+
+      if (completeRes.statusCode == 403 && code == 'FORBIDDEN') {
+        setState(() => _loading = false);
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _awaitingApproval = false;
+        _error = message;
+      });
     } catch (e) {
       setState(() {
-        _error = e.toString();
         _loading = false;
+        _awaitingApproval = false;
+        _error = e.toString();
       });
     }
   }
@@ -117,9 +193,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_error != null) {
@@ -135,7 +209,45 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 const SizedBox(height: 16),
                 Text(_error!, textAlign: TextAlign.center),
                 const SizedBox(height: 16),
-                FilledButton(onPressed: _pair, child: const Text('Retry')),
+                if (_requiresNewCode)
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Back and enter new code'),
+                  )
+                else
+                  FilledButton(onPressed: _pair, child: const Text('Retry')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_awaitingApproval) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Waiting for Host Approval')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.verified_user, size: 48, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text(
+                  'Pair request sent. Approve this device on the host app.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _loading ? null : _completePendingPair,
+                  child: const Text('I approved on host, continue'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _loading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
               ],
             ),
           ),
@@ -176,6 +288,12 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
             ),
     );
   }
+}
+
+class _PairingCodeException implements Exception {
+  final String message;
+
+  _PairingCodeException(this.message);
 }
 
 class _BrowseScreen extends StatefulWidget {
@@ -221,7 +339,8 @@ class _BrowseScreenState extends State<_BrowseScreen> {
         headers: {'authorization': 'Bearer ${widget.sessionToken}'},
       );
 
-      if (res.statusCode != 200) throw Exception('Server error ${res.statusCode}');
+      if (res.statusCode != 200)
+        throw Exception('Server error ${res.statusCode}');
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       setState(() {
         _entries = List<Map<String, dynamic>>.from(body['entries'] as List);
@@ -238,49 +357,45 @@ class _BrowseScreenState extends State<_BrowseScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.alias}${widget.path}'),
-      ),
+      appBar: AppBar(title: Text('${widget.alias}${widget.path}')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: _entries.isEmpty
-                      ? const Center(child: Text('Empty folder'))
-                      : ListView.builder(
-                          itemCount: _entries.length,
-                          itemBuilder: (_, i) {
-                            final entry = _entries[i];
-                            final isDir = entry['kind'] == 'directory';
-                            return ListTile(
-                              leading: Icon(isDir
-                                  ? Icons.folder
-                                  : Icons.insert_drive_file),
-                              title:
-                                  Text(entry['name'] as String? ?? ''),
-                              subtitle: isDir
-                                  ? null
-                                  : Text(_formatSize(
-                                      entry['size'] as int? ?? 0)),
-                              onTap: isDir
-                                  ? () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => _BrowseScreen(
-                                            base: widget.base,
-                                            sessionToken: widget.sessionToken,
-                                            alias: widget.alias,
-                                            path: entry['path'] as String,
-                                          ),
-                                        ),
-                                      )
-                                  : null,
-                            );
-                          },
-                        ),
-                ),
+          ? Center(child: Text(_error!))
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _entries.isEmpty
+                  ? const Center(child: Text('Empty folder'))
+                  : ListView.builder(
+                      itemCount: _entries.length,
+                      itemBuilder: (_, i) {
+                        final entry = _entries[i];
+                        final isDir = entry['kind'] == 'directory';
+                        return ListTile(
+                          leading: Icon(
+                            isDir ? Icons.folder : Icons.insert_drive_file,
+                          ),
+                          title: Text(entry['name'] as String? ?? ''),
+                          subtitle: isDir
+                              ? null
+                              : Text(_formatSize(entry['size'] as int? ?? 0)),
+                          onTap: isDir
+                              ? () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => _BrowseScreen(
+                                      base: widget.base,
+                                      sessionToken: widget.sessionToken,
+                                      alias: widget.alias,
+                                      path: entry['path'] as String,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        );
+                      },
+                    ),
+            ),
     );
   }
 

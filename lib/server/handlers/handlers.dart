@@ -16,9 +16,9 @@ final _uuid = const Uuid();
 
 Handler healthHandler() {
   return (Request _) => Response.ok(
-        jsonEncode({'status': 'ok', 'version': 'v1'}),
-        headers: _json,
-      );
+    jsonEncode({'status': 'ok', 'version': 'v1'}),
+    headers: _json,
+  );
 }
 
 // ─── Pairing ─────────────────────────────────────────────────────────────────
@@ -41,7 +41,11 @@ Handler pairRequestHandler(PairingManager pairing) {
     final secret = body['pairingSecret'] as String?;
 
     if (deviceName == null || secret == null) {
-      return _error(400, 'INVALID_ARGUMENT', 'deviceName and pairingSecret are required');
+      return _error(
+        400,
+        'INVALID_ARGUMENT',
+        'deviceName and pairingSecret are required',
+      );
     }
 
     final err = pairing.validate(ip, secret);
@@ -75,9 +79,13 @@ Handler pairCompleteHandler(TokenStore tokens) {
       return _error(400, 'INVALID_ARGUMENT', 'pairRequestId required');
     }
 
-    final pending = _pendingRequests.remove(requestId);
+    final pending = _pendingRequests[requestId];
     if (pending == null) {
-      return _error(404, 'NOT_FOUND', 'Pair request not found or already consumed');
+      return _error(
+        404,
+        'NOT_FOUND',
+        'Pair request not found or already consumed',
+      );
     }
 
     if (!pending.approved) {
@@ -90,6 +98,9 @@ Handler pairCompleteHandler(TokenStore tokens) {
       publicKeyFingerprint: pending.fingerprint,
       role: pending.role,
     );
+
+    // Consume request after successful completion.
+    _pendingRequests.remove(requestId);
 
     return Response.ok(
       jsonEncode({
@@ -143,17 +154,15 @@ void denyPairRequest(String requestId) {
 }
 
 /// Returns all pending requests (for host UI).
-List<PairRequest> get pendingPairRequests =>
-    _pendingRequests.values.toList();
+List<PairRequest> get pendingPairRequests => _pendingRequests.values.toList();
 
 // ─── Roots ────────────────────────────────────────────────────────────────────
 
 Handler rootsListHandler(RootRegistry registry) {
   return (Request request) {
-    final roots = registry.all.map((r) => {
-          'alias': r.alias,
-          'minimumRole': r.minimumRole.name,
-        }).toList();
+    final roots = registry.all
+        .map((r) => {'alias': r.alias, 'minimumRole': r.minimumRole.name})
+        .toList();
     return Response.ok(jsonEncode({'roots': roots}), headers: _json);
   };
 }
@@ -284,12 +293,12 @@ Future<Map<String, dynamic>?> _parseJson(Request request) async {
 }
 
 Response _error(int status, String code, String message) => Response(
-      status,
-      headers: _json,
-      body: jsonEncode({
-        'error': {'code': code, 'message': message},
-      }),
-    );
+  status,
+  headers: _json,
+  body: jsonEncode({
+    'error': {'code': code, 'message': message},
+  }),
+);
 
 class PairRequest {
   final String id;
