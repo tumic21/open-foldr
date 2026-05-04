@@ -6,6 +6,7 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -45,11 +46,30 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "open_foldr");
+    gtk_header_bar_set_title(header_bar, "Open Foldr");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "open_foldr");
+    gtk_window_set_title(window, "Open Foldr");
+  }
+
+  // Set the window icon from the bundled app_icon.png.
+  {
+    gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+    if (exe_path) {
+      gchar* exe_dir = g_path_get_dirname(exe_path);
+      gchar* icon_path =
+          g_build_filename(exe_dir, "data", "app_icon.png", nullptr);
+      GError* icon_error = nullptr;
+      GdkPixbuf* icon = gdk_pixbuf_new_from_file(icon_path, &icon_error);
+      if (icon) {
+        gtk_window_set_icon(window, icon);
+        g_object_unref(icon);
+      }
+      g_free(icon_path);
+      g_free(exe_dir);
+      g_free(exe_path);
+    }
   }
 
   gtk_window_set_default_size(window, 1280, 720);
