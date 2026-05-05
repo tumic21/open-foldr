@@ -233,6 +233,7 @@ void main() {
         client: _mockClient([]),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
 
@@ -244,6 +245,7 @@ void main() {
         client: _mockClient([]),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
 
@@ -259,6 +261,7 @@ void main() {
         client: _mockClient([]),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
 
@@ -281,6 +284,7 @@ void main() {
         client: _mockClient(entries),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -301,6 +305,7 @@ void main() {
         client: _mockClient([_file('alpha.txt')]),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -318,6 +323,7 @@ void main() {
         client: _mockClient([]),
         alias: 'docs',
         role: 'viewer',
+        watcherFactory: null,
       )));
       await tester.pump();
 

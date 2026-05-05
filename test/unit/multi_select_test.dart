@@ -270,6 +270,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );
@@ -287,6 +288,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'viewer',
+            watcherFactory: null,
           ),
         ),
       );
@@ -309,6 +311,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );
@@ -333,6 +336,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );
@@ -359,6 +363,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );
@@ -386,6 +391,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );
@@ -410,6 +416,7 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'editor',
+            watcherFactory: null,
           ),
         ),
       );

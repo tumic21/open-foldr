@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../client/file_client.dart';
+import '../../../client/watch_client.dart';
 import '../../widgets/file_manager/breadcrumb_bar.dart';
 import '../../widgets/file_manager/dialogs/confirm_delete_dialog.dart';
 import '../../widgets/file_manager/dialogs/conflict_dialog.dart';
@@ -226,13 +227,28 @@ class FileManagerScreen extends StatefulWidget {
   final String role;
   final String initialPath;
 
-  const FileManagerScreen({
+  /// Optional factory to create a [WatchClient] for a given [watchPath].
+  ///
+  /// Pass `watcherFactory: null` in tests to disable real-time watching.
+  final WatchClient? Function(String watchPath)? watcherFactory;
+
+  static const _unsetFactory = Object();
+
+  FileManagerScreen({
     super.key,
     required this.client,
     required this.alias,
     required this.role,
     this.initialPath = '/',
-  });
+    Object? watcherFactory = _unsetFactory,
+  }) : watcherFactory = watcherFactory == _unsetFactory
+            ? ((watchPath) => WatchClient(
+                  baseUrl: client.baseUrl,
+                  sessionToken: client.sessionToken,
+                  alias: alias,
+                  watchPath: watchPath,
+                ))
+            : watcherFactory as WatchClient? Function(String)?;
 
   @override
   State<FileManagerScreen> createState() => _FileManagerScreenState();
@@ -246,6 +262,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   bool _searchActive = false;
   final TextEditingController _searchController = TextEditingController();
+
+  WatchClient? _watcher;
 
   bool get _canWrite =>
       widget.role == 'editor' || widget.role == 'owner';
@@ -265,6 +283,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _state.removeListener(_onStateChanged);
     _state.dispose();
     _searchController.dispose();
+    _watcher?.dispose();
     super.dispose();
   }
 
@@ -325,6 +344,23 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     } else {
       _state.setError(result.errorMessage);
     }
+    _startWatcher();
+  }
+
+  /// (Re)starts the [WatchClient] for the current directory.
+  ///
+  /// Disposes any existing watcher before creating a new one so navigation
+  /// between directories always watches the right path.
+  void _startWatcher() {
+    _watcher?.dispose();
+    final newWatcher = widget.watcherFactory?.call(_state.currentPath);
+    if (newWatcher == null) return;
+    _watcher = newWatcher;
+    _watcher!.events.listen((event) {
+      // On any filesystem change, reload the current directory listing.
+      if (mounted) _load();
+    });
+    _watcher!.connect();
   }
 
   // ─── Upload ────────────────────────────────────────────────────────────────
