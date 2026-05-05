@@ -8,6 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../client/file_client.dart';
 import '../../widgets/file_manager/breadcrumb_bar.dart';
+import '../../widgets/file_manager/dialogs/confirm_delete_dialog.dart';
+import '../../widgets/file_manager/dialogs/conflict_dialog.dart';
+import '../../widgets/file_manager/dialogs/create_folder_dialog.dart';
+import '../../widgets/file_manager/dialogs/properties_dialog.dart';
+import '../../widgets/file_manager/dialogs/rename_dialog.dart';
 import '../../widgets/file_manager/file_grid_tile.dart';
 import '../../widgets/file_manager/file_list_tile.dart';
 import '../../widgets/file_manager/sort_menu.dart';
@@ -362,24 +367,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Delete ────────────────────────────────────────────────────────────────
 
   Future<void> _deleteEntry(String remotePath, String name) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: Text('Delete "$name"? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDeleteDialog(
+      context,
+      itemCount: 1,
+      itemName: name,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     final result =
         await widget.client.deleteItem(widget.alias, remotePath);
     if (!mounted) return;
@@ -390,11 +383,34 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
-  // ─── Conflict dialog ───────────────────────────────────────────────────────
+  // ─── Rename ────────────────────────────────────────────────────────────────
+
+  Future<void> _renameEntry(FileEntry entry) async {
+    final newName = await showRenameDialog(context, currentName: entry.name);
+    if (newName == null || newName == entry.name) return;
+
+    final dir = entry.path.contains('/')
+        ? entry.path.substring(0, entry.path.lastIndexOf('/'))
+        : '';
+    final newPath = dir.isEmpty ? '/$newName' : '$dir/$newName';
+
+    final result =
+        await widget.client.rename(widget.alias, entry.path, newPath);
+    if (!mounted) return;
+    if (result.isOk) {
+      await _load();
+    } else {
+      _showError(result.errorMessage);
+    }
+  }
+
+  // ─── Conflict dialog (upload version conflict) ──────────────────────────────
 
   void _showConflictDialog(
       String remotePath, Uint8List bytes, String latestToken) {
-    showDialog<void>(
+    // The upload-version conflict reuses the generic conflict dialog shape
+    // but maps actions to the upload retry flow.
+    showDialog<ConflictResolution?>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Version Conflict'),
@@ -404,72 +420,49 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () => Navigator.pop(ctx, ConflictResolution.skip),
               child: const Text('Cancel')),
           TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final ext = remotePath.contains('.')
-                  ? remotePath.substring(remotePath.lastIndexOf('.'))
-                  : '';
-              final base = ext.isNotEmpty
-                  ? remotePath.substring(0, remotePath.lastIndexOf('.'))
-                  : remotePath;
-              final copyPath =
-                  '${base}_copy_${DateTime.now().millisecondsSinceEpoch}$ext';
-              await _doPut(copyPath, bytes, ifMatch: '');
-            },
+            onPressed: () =>
+                Navigator.pop(ctx, ConflictResolution.keepBoth),
             child: const Text('Save as Copy'),
           ),
           FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _doPut(remotePath, bytes, ifMatch: latestToken);
-            },
+            onPressed: () =>
+                Navigator.pop(ctx, ConflictResolution.replace),
             child: const Text('Retry with Latest'),
           ),
           if (_canDelete)
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await _doPut(remotePath, bytes, ifMatch: '*');
-              },
+              onPressed: () =>
+                  Navigator.pop(ctx, ConflictResolution.replace),
               child: const Text('Force Overwrite'),
             ),
         ],
       ),
-    );
+    ).then((resolution) async {
+      if (resolution == null || resolution == ConflictResolution.skip) return;
+      if (resolution == ConflictResolution.keepBoth) {
+        final ext = remotePath.contains('.')
+            ? remotePath.substring(remotePath.lastIndexOf('.'))
+            : '';
+        final base = ext.isNotEmpty
+            ? remotePath.substring(0, remotePath.lastIndexOf('.'))
+            : remotePath;
+        final copyPath =
+            '${base}_copy_${DateTime.now().millisecondsSinceEpoch}$ext';
+        await _doPut(copyPath, bytes, ifMatch: '');
+      } else {
+        await _doPut(remotePath, bytes, ifMatch: latestToken);
+      }
+    });
   }
 
   // ─── Create folder ─────────────────────────────────────────────────────────
 
   Future<void> _createFolder() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Folder'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Folder name',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
+    final name = await showCreateFolderDialog(context);
     if (name == null || name.isEmpty) return;
     final path =
         '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
@@ -531,6 +524,23 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                   _uploadNewVersion(entry.path);
                 },
               ),
+            if (_canWrite)
+              ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('Rename'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _renameEntry(entry);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Properties'),
+              onTap: () {
+                Navigator.pop(ctx);
+                showPropertiesDialog(context, entry: entry);
+              },
+            ),
             if (_canDelete)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
@@ -849,24 +859,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _deleteSelected() async {
     final count = _state.selectedPaths.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: Text('Delete $count item(s)? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDeleteDialog(
+      context,
+      itemCount: count,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await widget.client
         .batchDelete(widget.alias, _state.selectedPaths.toList());
