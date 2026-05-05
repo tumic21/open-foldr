@@ -18,7 +18,7 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
   bool _starting = false;
 
   Future<void> _addFolder() async {
-    final result = await FilePicker.platform.getDirectoryPath();
+    final result = await FilePicker.getDirectoryPath();
     if (result == null) return;
     final alias = _deriveAlias(result);
     setState(() {

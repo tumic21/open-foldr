@@ -377,7 +377,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _uploadNewFile() async {
     final picked =
-        await FilePicker.platform.pickFiles(withData: true);
+        await FilePicker.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.first;
     final bytes = file.bytes;
@@ -405,7 +405,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
     final versionToken = metaResult.unwrap.versionToken;
     final picked =
-        await FilePicker.platform.pickFiles(withData: true);
+        await FilePicker.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
     final bytes = picked.files.first.bytes;
     if (bytes == null) return;
@@ -677,7 +677,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               child: TextButton.icon(
                 onPressed: () async {
                   final selected =
-                      await FilePicker.platform.getDirectoryPath();
+                      await FilePicker.getDirectoryPath();
                   if (selected != null && selected.isNotEmpty) {
                     controller.text = selected;
                   }

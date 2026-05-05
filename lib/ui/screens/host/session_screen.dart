@@ -122,7 +122,7 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   Future<void> _addSharedFolder() async {
-    final pickedPath = await FilePicker.platform.getDirectoryPath();
+    final pickedPath = await FilePicker.getDirectoryPath();
     if (pickedPath == null) return;
 
     final alias = _deriveAlias(pickedPath);
