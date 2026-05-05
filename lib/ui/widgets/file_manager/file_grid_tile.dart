@@ -6,6 +6,7 @@ import 'file_type_icon.dart';
 class FileGridTile extends StatelessWidget {
   final FileEntry entry;
   final bool selected;
+  final bool multiSelectMode;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -13,6 +14,7 @@ class FileGridTile extends StatelessWidget {
     super.key,
     required this.entry,
     this.selected = false,
+    this.multiSelectMode = false,
     this.onTap,
     this.onLongPress,
   });
@@ -35,10 +37,14 @@ class FileGridTile extends StatelessWidget {
                 alignment: Alignment.topRight,
                 child: SizedBox(
                   height: 24,
-                  child: selected
+                  child: multiSelectMode
                       ? Icon(
-                          Icons.check_circle,
-                          color: theme.colorScheme.primary,
+                          selected
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          color: selected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
                           size: 20,
                         )
                       : null,

@@ -653,7 +653,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             Expanded(child: _buildBody()),
           ],
         ),
-        floatingActionButton: _canWrite
+        floatingActionButton: _canWrite && !_state.multiSelectMode
             ? FloatingActionButton(
                 tooltip: 'New',
                 onPressed: _showNewItemMenu,
@@ -722,6 +722,16 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
       );
     }
+
+    // Tap on the background (empty space) exits multi-select mode.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _state.multiSelectMode ? _state.clearSelection : null,
+      child: _buildScrollBody(),
+    );
+  }
+
+  Widget _buildScrollBody() {
     if (_state.entries.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
@@ -751,6 +761,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             return FileGridTile(
               entry: entry,
               selected: _state.selectedPaths.contains(entry.path),
+              multiSelectMode: _state.multiSelectMode,
               onTap: () => _handleTap(entry),
               onLongPress: () => _state.toggleSelect(entry.path),
             );
