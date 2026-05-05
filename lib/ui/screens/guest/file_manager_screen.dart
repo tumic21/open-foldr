@@ -53,12 +53,14 @@ class FileManagerState extends ChangeNotifier {
 
   void pushPath(String path) {
     _pathStack.add(path);
+    _searchQuery = '';
     notifyListeners();
   }
 
   bool popPath() {
     if (_pathStack.length <= 1) return false;
     _pathStack.removeLast();
+    _searchQuery = '';
     notifyListeners();
     return true;
   }
@@ -73,6 +75,7 @@ class FileManagerState extends ChangeNotifier {
         ..clear()
         ..add(path);
     }
+    _searchQuery = '';
     notifyListeners();
   }
 
@@ -126,6 +129,28 @@ class FileManagerState extends ChangeNotifier {
 
   bool get hasSelection => selectedPaths.isNotEmpty;
   bool get multiSelectMode => selectedPaths.isNotEmpty;
+
+  // ─── Search ─────────────────────────────────────────────────────────────────
+
+  String _searchQuery = '';
+  String get searchQuery => _searchQuery;
+
+  void setSearchQuery(String query) {
+    _searchQuery = query.toLowerCase().trim();
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    _searchQuery = '';
+    notifyListeners();
+  }
+
+  List<FileEntry> get filteredEntries {
+    if (_searchQuery.isEmpty) return entries;
+    return entries
+        .where((e) => e.name.toLowerCase().contains(_searchQuery))
+        .toList();
+  }
 
   void copySelected(String alias) {
     clipboard = ClipboardState(
@@ -207,6 +232,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   late final FileManagerState _state;
   String? _downloadFolder;
 
+  bool _searchActive = false;
+  final TextEditingController _searchController = TextEditingController();
+
   bool get _canWrite =>
       widget.role == 'editor' || widget.role == 'owner';
   bool get _canDelete => widget.role == 'owner';
@@ -224,6 +252,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   void dispose() {
     _state.removeListener(_onStateChanged);
     _state.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -261,6 +290,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Navigation ────────────────────────────────────────────────────────────
 
   Future<bool> _onWillPop() async {
+    if (_searchActive) {
+      _closeSearch();
+      return false;
+    }
     if (_state.multiSelectMode) {
       _state.clearSelection();
       return false;
@@ -626,6 +659,16 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     );
   }
 
+  void _openSearch() {
+    setState(() => _searchActive = true);
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    _state.clearSearch();
+    setState(() => _searchActive = false);
+  }
+
   // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -648,6 +691,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               onNavigateTo: (path) async {
                 _state.navigateTo(path);
                 _state.clearSelection();
+                if (_searchActive) _closeSearch();
                 await _load();
               },
             ),
@@ -687,22 +731,46 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
 
     return AppBar(
-      title: Text(widget.alias),
+      title: _searchActive
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search…',
+                border: InputBorder.none,
+                isDense: true,
+              ),
+              onChanged: _state.setSearchQuery,
+            )
+          : Text(widget.alias),
       actions: [
-        ViewModeToggle(
-          mode: _state.viewMode,
-          onChanged: _state.setViewMode,
-        ),
-        SortMenu(
-          sortBy: _state.sortBy,
-          sortOrder: _state.sortOrder,
-          onChanged: _state.setSortBy,
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings),
-          tooltip: 'Settings',
-          onPressed: _showSettingsDialog,
-        ),
+        if (_searchActive)
+          IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'Close search',
+            onPressed: _closeSearch,
+          )
+        else ...[
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search',
+            onPressed: _openSearch,
+          ),
+          ViewModeToggle(
+            mode: _state.viewMode,
+            onChanged: _state.setViewMode,
+          ),
+          SortMenu(
+            sortBy: _state.sortBy,
+            sortOrder: _state.sortOrder,
+            onChanged: _state.setSortBy,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: _showSettingsDialog,
+          ),
+        ],
       ],
     );
   }
@@ -733,13 +801,19 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   Widget _buildScrollBody() {
-    if (_state.entries.isEmpty) {
+    final visible = _state.filteredEntries;
+
+    if (visible.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          children: const [
-            SizedBox(height: 120),
-            Center(child: Text('Empty folder')),
+          children: [
+            const SizedBox(height: 120),
+            Center(
+              child: Text(_state.searchQuery.isNotEmpty
+                  ? 'No results for "${_state.searchQuery}"'
+                  : 'Empty folder'),
+            ),
           ],
         ),
       );
@@ -756,9 +830,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             crossAxisSpacing: 4,
             childAspectRatio: 0.85,
           ),
-          itemCount: _state.entries.length,
+          itemCount: visible.length,
           itemBuilder: (_, i) {
-            final entry = _state.entries[i];
+            final entry = visible[i];
             return FileGridTile(
               entry: entry,
               selected: _state.selectedPaths.contains(entry.path),
@@ -774,9 +848,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        itemCount: _state.entries.length,
+        itemCount: visible.length,
         itemBuilder: (_, i) {
-          final entry = _state.entries[i];
+          final entry = visible[i];
           return FileListTile(
             entry: entry,
             selected: _state.selectedPaths.contains(entry.path),
@@ -798,6 +872,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (entry.isDirectory) {
       _state.pushPath(entry.path);
       _state.clearSelection();
+      if (_searchActive) _closeSearch();
       _load();
     } else {
       _openFile(entry);
