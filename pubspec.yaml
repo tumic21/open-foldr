@@ -49,6 +49,7 @@ dependencies:
   shared_preferences: ^2.3.5
   re_editor: ^0.8.0
   re_highlight: ^0.0.3
+  pdfx: ^2.9.2
 
 dev_dependencies:
   flutter_test:

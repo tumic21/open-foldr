@@ -19,6 +19,8 @@ import '../../widgets/file_manager/file_list_tile.dart';
 import '../../widgets/file_manager/sort_menu.dart';
 import '../../widgets/file_manager/view_mode_toggle.dart';
 import 'file_preview_screen.dart';
+import 'image_preview_screen.dart';
+import 'pdf_preview_screen.dart';
 import 'text_editor_screen.dart';
 
 // ─── State model ────────────────────────────────────────────────────────────
@@ -226,6 +228,7 @@ class FileManagerScreen extends StatefulWidget {
   final String alias;
   final String role;
   final String initialPath;
+  final void Function(String kind, FileEntry entry)? onOpenFile;
 
   /// Optional factory to create a [WatchClient] for a given [watchPath].
   ///
@@ -240,6 +243,7 @@ class FileManagerScreen extends StatefulWidget {
     required this.alias,
     required this.role,
     this.initialPath = '/',
+    this.onOpenFile,
     Object? watcherFactory = _unsetFactory,
   }) : watcherFactory = watcherFactory == _unsetFactory
             ? ((watchPath) => WatchClient(
@@ -1060,8 +1064,33 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     return textExts.contains(ext);
   }
 
+  static bool _isImageFile(String name) {
+    final ext = name.contains('.')
+        ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
+        : '';
+    const imageExts = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'ico',
+    };
+    return imageExts.contains(ext);
+  }
+
+  static bool _isPdfFile(String name) {
+    final ext = name.contains('.')
+        ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
+        : '';
+    return ext == 'pdf';
+  }
+
   void _openFile(FileEntry entry) {
     if (_isTextFile(entry.name)) {
+      widget.onOpenFile?.call('text', entry);
+      if (widget.onOpenFile != null) return;
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -1077,20 +1106,45 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       );
       return;
     }
-    // Non-text: open preview (images, binary, etc.)
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FilePreviewScreen(
-          base: widget.client.baseUrl,
-          sessionToken: widget.client.sessionToken,
-          alias: widget.alias,
-          remotePath: entry.path,
-          fileName: entry.name,
-          fileSize: entry.size,
+
+    if (_isImageFile(entry.name)) {
+      widget.onOpenFile?.call('image', entry);
+      if (widget.onOpenFile != null) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ImagePreviewScreen(
+            client: widget.client,
+            alias: widget.alias,
+            remotePath: entry.path,
+            fileName: entry.name,
+          ),
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+    if (_isPdfFile(entry.name)) {
+      widget.onOpenFile?.call('pdf', entry);
+      if (widget.onOpenFile != null) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfPreviewScreen(
+            client: widget.client,
+            alias: widget.alias,
+            remotePath: entry.path,
+            fileName: entry.name,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Unsupported previews fall back to direct download.
+    widget.onOpenFile?.call('download', entry);
+    if (widget.onOpenFile != null) return;
+    _downloadFile(entry.path, entry.name);
   }
 
   Widget _buildBottomBar() {

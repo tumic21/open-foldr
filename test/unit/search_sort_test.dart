@@ -330,4 +330,78 @@ void main() {
       expect(find.byIcon(Icons.sort), findsOneWidget);
     });
   });
+
+  group('FileManagerScreen — open file routing', () {
+    testWidgets('routes text files as text', (tester) async {
+      String? openedKind;
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('readme.txt')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+        onOpenFile: (kind, _) => openedKind = kind,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('readme.txt'));
+      await tester.pump();
+
+      expect(openedKind, 'text');
+    });
+
+    testWidgets('routes image files as image', (tester) async {
+      String? openedKind;
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('photo.jpg')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+        onOpenFile: (kind, _) => openedKind = kind,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('photo.jpg'));
+      await tester.pump();
+
+      expect(openedKind, 'image');
+    });
+
+    testWidgets('routes pdf files as pdf', (tester) async {
+      String? openedKind;
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('guide.pdf')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+        onOpenFile: (kind, _) => openedKind = kind,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('guide.pdf'));
+      await tester.pump();
+
+      expect(openedKind, 'pdf');
+    });
+
+    testWidgets('routes unknown files to download fallback', (tester) async {
+      String? openedKind;
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('archive.bin')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+        onOpenFile: (kind, _) => openedKind = kind,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('archive.bin'));
+      await tester.pump();
+
+      expect(openedKind, 'download');
+    });
+  });
 }
