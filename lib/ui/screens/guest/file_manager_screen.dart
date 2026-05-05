@@ -8,15 +8,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../client/file_client.dart';
 import '../../../client/watch_client.dart';
+import '../../../core/transfer_manager.dart';
 import '../../widgets/file_manager/breadcrumb_bar.dart';
 import '../../widgets/file_manager/dialogs/confirm_delete_dialog.dart';
 import '../../widgets/file_manager/dialogs/conflict_dialog.dart';
 import '../../widgets/file_manager/dialogs/create_folder_dialog.dart';
 import '../../widgets/file_manager/dialogs/properties_dialog.dart';
+import '../../widgets/file_manager/drop_upload_region.dart';
 import '../../widgets/file_manager/dialogs/rename_dialog.dart';
 import '../../widgets/file_manager/file_grid_tile.dart';
 import '../../widgets/file_manager/file_list_tile.dart';
 import '../../widgets/file_manager/sort_menu.dart';
+import '../../widgets/file_manager/upload_progress_overlay.dart';
 import '../../widgets/file_manager/view_mode_toggle.dart';
 import 'file_preview_screen.dart';
 import 'image_preview_screen.dart';
@@ -268,10 +271,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   WatchClient? _watcher;
+  final Map<String, UploadProgressItem> _uploadProgress = {};
 
   bool get _canWrite =>
       widget.role == 'editor' || widget.role == 'owner';
   bool get _canDelete => widget.role == 'owner';
+    bool get _isDesktop =>
+      Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
   @override
   void initState() {
@@ -856,6 +862,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                   BreadcrumbBar(
                     alias: widget.alias,
                     currentPath: _state.currentPath,
+                    onDropPaths: _isDesktop && _canWrite
+                        ? (paths, destination) =>
+                            _moveDraggedPaths(paths, destination)
+                        : null,
                     onNavigateTo: (path) async {
                       _state.navigateTo(path);
                       _state.clearSelection();
@@ -863,7 +873,27 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                       await _load();
                     },
                   ),
-                  Expanded(child: _buildBody()),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: DropUploadRegion(
+                            enabled: _isDesktop && _canWrite,
+                            onFilesDropped: _uploadDroppedFiles,
+                            child: _buildBody(),
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            ignoring: true,
+                            child: UploadProgressOverlay(
+                              items: _uploadProgress.values.toList(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               floatingActionButton: _canWrite && !_state.multiSelectMode
@@ -1009,6 +1039,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               entry: entry,
               selected: _state.selectedPaths.contains(entry.path),
               multiSelectMode: _state.multiSelectMode,
+              draggablePaths:
+                  _isDesktop && _canWrite ? _dragPayloadForEntry(entry) : null,
+              onDragStarted: _isDesktop && _canWrite
+                  ? () => _handleDragStarted(entry)
+                  : null,
+              onDragCompleted: _isDesktop && _canWrite
+                  ? _handleDragCompleted
+                  : null,
+              onDropPaths: entry.isDirectory && _isDesktop && _canWrite
+                  ? (paths) => _moveDraggedPaths(paths, entry.path)
+                  : null,
               onTap: () => _handleTap(entry),
               onLongPress: () => _state.toggleSelect(entry.path),
             );
@@ -1027,6 +1068,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             entry: entry,
             selected: _state.selectedPaths.contains(entry.path),
             multiSelectMode: _state.multiSelectMode,
+            draggablePaths:
+                _isDesktop && _canWrite ? _dragPayloadForEntry(entry) : null,
+            onDragStarted: _isDesktop && _canWrite
+                ? () => _handleDragStarted(entry)
+                : null,
+            onDragCompleted: _isDesktop && _canWrite
+                ? _handleDragCompleted
+                : null,
+            onDropPaths: entry.isDirectory && _isDesktop && _canWrite
+                ? (paths) => _moveDraggedPaths(paths, entry.path)
+                : null,
             onTap: () => _handleTap(entry),
             onLongPress: () => _state.toggleSelect(entry.path),
             onMoreTap: () => _showFileActions(entry),
@@ -1254,5 +1306,126 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
       ),
     );
+  }
+
+  List<String> _dragPayloadForEntry(FileEntry entry) {
+    if (_state.multiSelectMode &&
+        _state.selectedPaths.isNotEmpty &&
+        _state.selectedPaths.contains(entry.path)) {
+      return _state.selectedPaths.toList(growable: false);
+    }
+    return [entry.path];
+  }
+
+  void _handleDragStarted(FileEntry entry) {
+    final payload = _dragPayloadForEntry(entry);
+
+    // Single-item drag on desktop enters multi-select and auto-selects item.
+    if (!_state.multiSelectMode && payload.length == 1) {
+      _state.clearSelection();
+      _state.toggleSelect(entry.path);
+    }
+  }
+
+  void _handleDragCompleted() {
+  }
+
+  bool _isInvalidMove(String source, String destination) {
+    if (source == destination) return true;
+    return destination.startsWith('$source/');
+  }
+
+  Future<void> _moveDraggedPaths(
+      List<String> paths, String destination) async {
+    if (!_canWrite) return;
+    if (paths.isEmpty) return;
+
+    final unique = paths.toSet().toList(growable: false);
+    if (unique.any((src) => _isInvalidMove(src, destination))) {
+      _showError('Cannot move an item into itself or its subfolder.');
+      return;
+    }
+
+    final result =
+        await widget.client.batchMove(widget.alias, unique, destination);
+    if (!mounted) return;
+    if (result.isErr) {
+      _showError(result.errorMessage);
+      return;
+    }
+    _state.clearSelection();
+    await _load();
+  }
+
+  Future<void> _uploadDroppedFiles(List<String> filePaths) async {
+    if (!_canWrite || filePaths.isEmpty) return;
+
+    final uploadManager = ResumableUploadManager(
+      base: widget.client.baseUrl,
+      sessionToken: widget.client.sessionToken,
+    );
+
+    try {
+      for (final path in filePaths) {
+        final file = File(path);
+        if (!file.existsSync()) continue;
+        final fileName = p.basename(path);
+        final remotePath =
+            '${_state.currentPath == '/' ? '' : _state.currentPath}/$fileName';
+
+        setState(() {
+          _uploadProgress[path] = UploadProgressItem(
+            name: fileName,
+            progress: 0,
+          );
+        });
+
+        final bytes = await file.readAsBytes();
+        try {
+          await uploadManager.upload(
+            alias: widget.alias,
+            remotePath: remotePath,
+            bytes: bytes,
+            onProgress: (progress) {
+              if (!mounted) return;
+              setState(() {
+                _uploadProgress[path] = UploadProgressItem(
+                  name: fileName,
+                  progress: progress.fraction,
+                  complete: progress.complete,
+                );
+              });
+            },
+          );
+          if (!mounted) return;
+          setState(() {
+            _uploadProgress[path] = UploadProgressItem(
+              name: fileName,
+              progress: 1,
+              complete: true,
+            );
+          });
+        } catch (e) {
+          if (!mounted) return;
+          setState(() {
+            _uploadProgress[path] = UploadProgressItem(
+              name: fileName,
+              progress: 0,
+              error: e.toString(),
+            );
+          });
+        }
+      }
+
+      await _load();
+    } finally {
+      uploadManager.dispose();
+      if (mounted) {
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          setState(() => _uploadProgress.clear());
+        });
+      }
+    }
   }
 }

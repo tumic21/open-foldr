@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 
 import 'package:open_foldr/client/file_client.dart';
 import 'package:open_foldr/ui/screens/guest/file_manager_screen.dart';
+import 'package:open_foldr/ui/widgets/file_manager/breadcrumb_bar.dart';
 import 'package:open_foldr/ui/widgets/file_manager/file_grid_tile.dart';
 import 'package:open_foldr/ui/widgets/file_manager/file_list_tile.dart';
 
@@ -255,6 +256,86 @@ void main() {
       );
       final cb = tester.widget<Checkbox>(find.byType(Checkbox));
       expect(cb.value, isTrue);
+    });
+
+    testWidgets('wraps in LongPressDraggable when draggablePaths provided',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileListTile(
+              entry: _file('docs.txt'),
+              draggablePaths: const ['/docs.txt'],
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(LongPressDraggable<List<String>>), findsOneWidget);
+    });
+
+    testWidgets('wraps directories in DragTarget when onDropPaths provided',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileListTile(
+              entry: _dir('docs'),
+              onDropPaths: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(DragTarget<List<String>>), findsOneWidget);
+    });
+  });
+
+  group('FileGridTile — drag wrappers', () {
+    testWidgets('wraps in LongPressDraggable when draggablePaths provided',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileGridTile(
+              entry: _file('docs.txt'),
+              draggablePaths: const ['/docs.txt'],
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(LongPressDraggable<List<String>>), findsOneWidget);
+    });
+
+    testWidgets('wraps directories in DragTarget when onDropPaths provided',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileGridTile(
+              entry: _dir('docs'),
+              onDropPaths: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byType(DragTarget<List<String>>), findsOneWidget);
+    });
+  });
+
+  group('BreadcrumbBar — drag target segments', () {
+    testWidgets('creates DragTarget for each segment', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: BreadcrumbBar(
+              alias: 'docs',
+              currentPath: '/a/b',
+            ),
+          ),
+        ),
+      );
+
+      // alias + a + b
+      expect(find.byType(DragTarget<List<String>>), findsNWidgets(3));
     });
   });
 

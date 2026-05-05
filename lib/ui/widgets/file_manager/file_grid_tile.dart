@@ -9,6 +9,10 @@ class FileGridTile extends StatelessWidget {
   final bool multiSelectMode;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final List<String>? draggablePaths;
+  final VoidCallback? onDragStarted;
+  final VoidCallback? onDragCompleted;
+  final void Function(List<String> paths)? onDropPaths;
 
   const FileGridTile({
     super.key,
@@ -17,12 +21,16 @@ class FileGridTile extends StatelessWidget {
     this.multiSelectMode = false,
     this.onTap,
     this.onLongPress,
+    this.draggablePaths,
+    this.onDragStarted,
+    this.onDragCompleted,
+    this.onDropPaths,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
+    Widget tile = GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Card(
@@ -77,5 +85,55 @@ class FileGridTile extends StatelessWidget {
         ),
       ),
     );
+
+    if (entry.isDirectory && onDropPaths != null) {
+      final innerTile = tile;
+      tile = DragTarget<List<String>>(
+        onWillAcceptWithDetails: (details) => details.data.isNotEmpty,
+        onAcceptWithDetails: (details) => onDropPaths!(details.data),
+        builder: (context, candidateData, rejectedData) {
+          final isTargeted = candidateData.isNotEmpty;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              border: isTargeted
+                  ? Border.all(color: theme.colorScheme.primary, width: 2)
+                  : null,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: innerTile,
+          );
+        },
+      );
+    }
+
+    if (draggablePaths != null && draggablePaths!.isNotEmpty) {
+      tile = LongPressDraggable<List<String>>(
+        data: draggablePaths!,
+        onDragStarted: onDragStarted,
+        onDragCompleted: onDragCompleted,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.colorScheme.primary),
+            ),
+            child: Text(
+              draggablePaths!.length == 1
+                  ? 'Moving ${entry.name}'
+                  : 'Moving ${draggablePaths!.length} items',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.45, child: tile),
+        child: tile,
+      );
+    }
+
+    return tile;
   }
 }

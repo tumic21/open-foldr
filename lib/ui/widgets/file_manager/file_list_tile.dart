@@ -10,6 +10,10 @@ class FileListTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onMoreTap;
+  final List<String>? draggablePaths;
+  final VoidCallback? onDragStarted;
+  final VoidCallback? onDragCompleted;
+  final void Function(List<String> paths)? onDropPaths;
 
   const FileListTile({
     super.key,
@@ -19,12 +23,16 @@ class FileListTile extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.onMoreTap,
+    this.draggablePaths,
+    this.onDragStarted,
+    this.onDragCompleted,
+    this.onDropPaths,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
+    Widget tile = ListTile(
       selected: selected,
       leading: multiSelectMode
           ? Checkbox(
@@ -45,6 +53,56 @@ class FileListTile extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
     );
+
+    if (entry.isDirectory && onDropPaths != null) {
+      final innerTile = tile;
+      tile = DragTarget<List<String>>(
+        onWillAcceptWithDetails: (details) => details.data.isNotEmpty,
+        onAcceptWithDetails: (details) => onDropPaths!(details.data),
+        builder: (context, candidateData, rejectedData) {
+          final isTargeted = candidateData.isNotEmpty;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              border: isTargeted
+                  ? Border.all(color: theme.colorScheme.primary, width: 2)
+                  : null,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: innerTile,
+          );
+        },
+      );
+    }
+
+    if (draggablePaths != null && draggablePaths!.isNotEmpty) {
+      tile = LongPressDraggable<List<String>>(
+        data: draggablePaths!,
+        onDragStarted: onDragStarted,
+        onDragCompleted: onDragCompleted,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.colorScheme.primary),
+            ),
+            child: Text(
+              draggablePaths!.length == 1
+                  ? 'Moving ${entry.name}'
+                  : 'Moving ${draggablePaths!.length} items',
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.45, child: tile),
+        child: tile,
+      );
+    }
+
+    return tile;
   }
 
   String _subtitle() {

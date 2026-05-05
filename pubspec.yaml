@@ -50,6 +50,8 @@ dependencies:
   re_editor: ^0.8.0
   re_highlight: ^0.0.3
   pdfx: ^2.9.2
+  super_drag_and_drop: ^0.8.20
+  super_clipboard: ^0.8.24
 
 dev_dependencies:
   flutter_test:
