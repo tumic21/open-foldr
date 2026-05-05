@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -205,6 +205,18 @@ class FileManagerState extends ChangeNotifier {
     return [...dirs, ...files];
   }
 }
+
+// ─── Keyboard shortcut intents ───────────────────────────────────────────────
+
+class _CopyIntent extends Intent { const _CopyIntent(); }
+class _CutIntent extends Intent { const _CutIntent(); }
+class _PasteIntent extends Intent { const _PasteIntent(); }
+class _SelectAllIntent extends Intent { const _SelectAllIntent(); }
+class _DeleteIntent extends Intent { const _DeleteIntent(); }
+class _RenameIntent extends Intent { const _RenameIntent(); }
+class _NewFolderIntent extends Intent { const _NewFolderIntent(); }
+class _NavUpIntent extends Intent { const _NavUpIntent(); }
+class _OpenIntent extends Intent { const _OpenIntent(); }
 
 // ─── FileManagerScreen ───────────────────────────────────────────────────────
 
@@ -681,31 +693,151 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         if (goBack && context.mounted) Navigator.pop(context);
         if (!goBack) await _load();
       },
-      child: Scaffold(
-        appBar: _buildAppBar(),
-        body: Column(
-          children: [
-            BreadcrumbBar(
-              alias: widget.alias,
-              currentPath: _state.currentPath,
-              onNavigateTo: (path) async {
-                _state.navigateTo(path);
-                _state.clearSelection();
-                if (_searchActive) _closeSearch();
-                await _load();
+      child: Shortcuts(
+        shortcuts: {
+          const SingleActivator(LogicalKeyboardKey.keyC, control: true):
+              const _CopyIntent(),
+          const SingleActivator(LogicalKeyboardKey.keyX, control: true):
+              const _CutIntent(),
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+              const _PasteIntent(),
+          const SingleActivator(LogicalKeyboardKey.keyA, control: true):
+              const _SelectAllIntent(),
+          const SingleActivator(LogicalKeyboardKey.delete):
+              const _DeleteIntent(),
+          const SingleActivator(LogicalKeyboardKey.f2):
+              const _RenameIntent(),
+          const SingleActivator(LogicalKeyboardKey.keyN, control: true):
+              const _NewFolderIntent(),
+          const SingleActivator(LogicalKeyboardKey.backspace):
+              const _NavUpIntent(),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+              const _NavUpIntent(),
+          const SingleActivator(LogicalKeyboardKey.enter):
+              const _OpenIntent(),
+        },
+        child: Actions(
+          actions: {
+            _CopyIntent: CallbackAction<_CopyIntent>(
+              onInvoke: (_) {
+                if (_state.hasSelection && !_searchActive) {
+                  _state.copySelected(widget.alias);
+                  _state.clearSelection();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied to clipboard')),
+                  );
+                }
+                return null;
               },
             ),
-            Expanded(child: _buildBody()),
-          ],
+            _CutIntent: CallbackAction<_CutIntent>(
+              onInvoke: (_) {
+                if (_state.hasSelection && !_searchActive) {
+                  _state.cutSelected(widget.alias);
+                  _state.clearSelection();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Cut to clipboard')),
+                  );
+                }
+                return null;
+              },
+            ),
+            _PasteIntent: CallbackAction<_PasteIntent>(
+              onInvoke: (_) {
+                if (_state.clipboard != null && !_searchActive) _paste();
+                return null;
+              },
+            ),
+            _SelectAllIntent: CallbackAction<_SelectAllIntent>(
+              onInvoke: (_) {
+                if (!_searchActive) _state.selectAll();
+                return null;
+              },
+            ),
+            _DeleteIntent: CallbackAction<_DeleteIntent>(
+              onInvoke: (_) {
+                if (_state.hasSelection && _canDelete && !_searchActive) {
+                  _deleteSelected();
+                }
+                return null;
+              },
+            ),
+            _RenameIntent: CallbackAction<_RenameIntent>(
+              onInvoke: (_) {
+                if (_state.selectedPaths.length == 1 &&
+                    _canWrite &&
+                    !_searchActive) {
+                  final path = _state.selectedPaths.first;
+                  final entry = _state.entries
+                      .where((e) => e.path == path)
+                      .firstOrNull;
+                  if (entry != null) _renameEntry(entry);
+                }
+                return null;
+              },
+            ),
+            _NewFolderIntent: CallbackAction<_NewFolderIntent>(
+              onInvoke: (_) {
+                if (_canWrite && !_searchActive) _createFolder();
+                return null;
+              },
+            ),
+            _NavUpIntent: CallbackAction<_NavUpIntent>(
+              onInvoke: (_) {
+                // Don't intercept when a text field has focus (search bar).
+                if (_searchActive) return null;
+                if (_state.canGoUp) {
+                  _state.popPath();
+                  _state.clearSelection();
+                  _load();
+                }
+                return null;
+              },
+            ),
+            _OpenIntent: CallbackAction<_OpenIntent>(
+              onInvoke: (_) {
+                if (_state.selectedPaths.length == 1 && !_searchActive) {
+                  final path = _state.selectedPaths.first;
+                  final entry = _state.entries
+                      .where((e) => e.path == path)
+                      .firstOrNull;
+                  if (entry != null) _handleTap(entry);
+                }
+                return null;
+              },
+            ),
+          },
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              appBar: _buildAppBar(),
+              body: Column(
+                children: [
+                  BreadcrumbBar(
+                    alias: widget.alias,
+                    currentPath: _state.currentPath,
+                    onNavigateTo: (path) async {
+                      _state.navigateTo(path);
+                      _state.clearSelection();
+                      if (_searchActive) _closeSearch();
+                      await _load();
+                    },
+                  ),
+                  Expanded(child: _buildBody()),
+                ],
+              ),
+              floatingActionButton: _canWrite && !_state.multiSelectMode
+                  ? FloatingActionButton(
+                      tooltip: 'New',
+                      onPressed: _showNewItemMenu,
+                      child: const Icon(Icons.add),
+                    )
+                  : null,
+              bottomNavigationBar:
+                  _state.hasSelection ? _buildBottomBar() : null,
+            ),
+          ),
         ),
-        floatingActionButton: _canWrite && !_state.multiSelectMode
-            ? FloatingActionButton(
-                tooltip: 'New',
-                onPressed: _showNewItemMenu,
-                child: const Icon(Icons.add),
-              )
-            : null,
-        bottomNavigationBar: _state.hasSelection ? _buildBottomBar() : null,
       ),
     );
   }
