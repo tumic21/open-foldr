@@ -10,6 +10,7 @@ import 'activity/activity_log.dart';
 import 'handlers/handlers.dart';
 import 'handlers/write_handlers.dart';
 import 'handlers/resumable_handlers.dart';
+import 'handlers/fs_handlers.dart';
 import '../core/constants.dart';
 
 /// The embedded HTTP server that runs on the host device.
@@ -65,7 +66,13 @@ class OpenFoldrServer {
       ..delete(
         '/v1/roots/<alias>/upload/<uploadId>',
         uploadCancelHandler(roots),
-      );
+      )
+      // Phase 4: filesystem operations (mkdir, rename, copy, batch move/copy)
+      ..post('/v1/roots/<alias>/mkdir', mkdirHandler(roots, log))
+      ..post('/v1/roots/<alias>/rename', renameHandler(roots, log))
+      ..post('/v1/roots/<alias>/copy', copyHandler(roots, log))
+      ..post('/v1/roots/<alias>/batch/move', batchMoveHandler(roots, log))
+      ..post('/v1/roots/<alias>/batch/copy', batchCopyHandler(roots, log));
 
     final handler = const Pipeline()
         .addMiddleware(logRequests())
