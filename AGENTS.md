@@ -15,6 +15,7 @@ Guidance for coding agents and contributors working in this repository.
 - `_project/` is intentionally ignored by git and is not part of version-controlled source.
 - Do not depend on `_project/` files at runtime.
 - If a planning item becomes implementation-relevant, move it into tracked docs or source files.
+- During implementation, mark completed steps and phases in implementation plans and specifications.
 
 ## Security and Safety
 
