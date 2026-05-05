@@ -1,11 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../client/file_client.dart';
 import 'file_preview_screen.dart';
 
 class ExplorerScreen extends StatefulWidget {
@@ -25,12 +24,12 @@ class ExplorerScreen extends StatefulWidget {
 }
 
 class _ExplorerScreenState extends State<ExplorerScreen> {
-  String? _sessionToken;
   String? _error;
   List<Map<String, dynamic>> _roots = [];
   bool _loading = false;
   bool _requiresNewCode = false;
   String _role = 'viewer';
+  FileClient? _client;
 
   String get _base => 'http://${widget.hostAddress}:${widget.port}/v1';
 
@@ -40,6 +39,12 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
     _pair();
   }
 
+  @override
+  void dispose() {
+    _client?.close();
+    super.dispose();
+  }
+
   Future<void> _pair() async {
     setState(() {
       _loading = true;
@@ -47,61 +52,32 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       _requiresNewCode = false;
     });
     try {
-      // Step 1: request pairing
-      final reqRes = await http.post(
-        Uri.parse('$_base/auth/pair/request'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({
-          'deviceName': 'Guest',
-          'devicePublicKey': '',
-          'pairingSecret': widget.pairingSecret,
-        }),
+      final result = await FileClient.pair(
+        baseUrl: _base,
+        pairingSecret: widget.pairingSecret,
       );
-      if (reqRes.statusCode != 200) {
-        final body = jsonDecode(reqRes.body) as Map<String, dynamic>;
-        final err = body['error'] as Map<String, dynamic>?;
-        final code = err?['code'] as String?;
-        final message = err?['message'] as String? ?? 'Pairing request failed';
 
+      if (result.isErr) {
+        final code = result.errorCode;
+        final message = result.errorMessage;
         if (code == 'NO_ACTIVE_SECRET' || code == 'SECRET_EXPIRED') {
           throw _PairingCodeException(
             'Pairing code is expired or already used. Ask host for a new code.',
           );
         }
-
         if (code == 'INVALID_SECRET') {
           throw _PairingCodeException(
             'Pairing code is invalid. Check code and retry.',
           );
         }
-
         throw Exception(message);
       }
-      final requestId =
-          (jsonDecode(reqRes.body) as Map<String, dynamic>)['pairRequestId']
-              as String;
 
-      final completeRes = await http.post(
-        Uri.parse('$_base/auth/pair/complete'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({'pairRequestId': requestId}),
-      );
-      if (completeRes.statusCode != 200) {
-        final body = jsonDecode(completeRes.body) as Map<String, dynamic>;
-        final err = body['error'] as Map<String, dynamic>?;
-        throw Exception(err?['message'] ?? 'Pairing complete failed');
-      }
-
-      final token =
-          (jsonDecode(completeRes.body) as Map<String, dynamic>)['sessionToken']
-              as String;
-      final role =
-          (jsonDecode(completeRes.body) as Map<String, dynamic>)['role']
-              as String? ?? 'viewer';
+      final pairData = result.unwrap;
+      _client = pairData.client;
 
       setState(() {
-        _sessionToken = token;
-        _role = role;
+        _role = pairData.role;
       });
       await _loadRoots();
     } on _PairingCodeException catch (e) {
@@ -119,19 +95,15 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   }
 
   Future<void> _loadRoots() async {
-    final res = await http.get(
-      Uri.parse('$_base/roots'),
-      headers: {'authorization': 'Bearer $_sessionToken'},
-    );
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final result = await _client!.listRoots();
+    if (result.isOk) {
       setState(() {
-        _roots = List<Map<String, dynamic>>.from(body['roots'] as List);
+        _roots = result.unwrap;
         _loading = false;
       });
     } else {
       setState(() {
-        _error = 'Failed to load roots';
+        _error = result.errorMessage;
         _loading = false;
       });
     }
@@ -142,8 +114,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => _BrowseScreen(
-          base: _base,
-          sessionToken: _sessionToken!,
+          client: _client!,
           alias: alias,
           path: '/',
           role: _role,
@@ -227,15 +198,13 @@ class _PairingCodeException implements Exception {
 }
 
 class _BrowseScreen extends StatefulWidget {
-  final String base;
-  final String sessionToken;
+  final FileClient client;
   final String alias;
   final String path;
   final String role;
 
   const _BrowseScreen({
-    required this.base,
-    required this.sessionToken,
+    required this.client,
     required this.alias,
     required this.path,
     required this.role,
@@ -356,27 +325,24 @@ class _BrowseScreenState extends State<_BrowseScreen> {
       _loading = true;
       _error = null;
     });
-    try {
-      final uri = Uri.parse(
-        '${widget.base}/roots/${widget.alias}/entries',
-      ).replace(queryParameters: {'path': widget.path});
-
-      final res = await http.get(
-        uri,
-        headers: {'authorization': 'Bearer ${widget.sessionToken}'},
-      );
-
-      if (res.statusCode != 200) {
-        throw Exception('Server error ${res.statusCode}');
-      }
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final result = await widget.client.listEntries(widget.alias, widget.path);
+    if (!mounted) return;
+    if (result.isOk) {
       setState(() {
-        _entries = List<Map<String, dynamic>>.from(body['entries'] as List);
+        _entries = result.unwrap
+            .map((e) => {
+                  'name': e.name,
+                  'path': e.path,
+                  'kind': e.kind,
+                  'size': e.size,
+                  'modifiedAt': e.modifiedAt.toIso8601String(),
+                })
+            .toList();
         _loading = false;
       });
-    } catch (e) {
+    } else {
       setState(() {
-        _error = e.toString();
+        _error = result.errorMessage;
         _loading = false;
       });
     }
@@ -392,51 +358,35 @@ class _BrowseScreenState extends State<_BrowseScreen> {
     final bytes = picked.bytes;
     if (bytes == null) return;
 
-    final remotePath = '${widget.path == '/' ? '' : widget.path}/${picked.name}';
+    final remotePath =
+        '${widget.path == '/' ? '' : widget.path}/${picked.name}';
 
-    final uri = Uri.parse(
-      '${widget.base}/roots/${widget.alias}/file',
-    ).replace(queryParameters: {'path': remotePath});
-
-    final res = await http.put(
-      uri,
-      headers: {
-        'authorization': 'Bearer ${widget.sessionToken}',
-        'content-type': 'application/octet-stream',
-      },
-      body: bytes,
+    final uploadResult = await widget.client.uploadFile(
+      widget.alias,
+      remotePath,
+      bytes,
     );
 
     if (!mounted) return;
 
-    if (res.statusCode == 200) {
+    if (uploadResult.isOk) {
       await _load();
     } else {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final err = body['error'] as Map<String, dynamic>?;
-      _showError(err?['message'] as String? ?? 'Upload failed');
+      _showError(uploadResult.errorMessage);
     }
   }
 
   // ─── Upload a new version of an existing file ────────────────────────────
 
   Future<void> _uploadNewVersion(String remotePath) async {
-    // Fetch current version token first.
-    final metaUri = Uri.parse(
-      '${widget.base}/roots/${widget.alias}/metadata',
-    ).replace(queryParameters: {'path': remotePath});
-
-    final metaRes = await http.get(
-      metaUri,
-      headers: {'authorization': 'Bearer ${widget.sessionToken}'},
-    );
+    final metaResult =
+        await widget.client.getMetadata(widget.alias, remotePath);
     if (!mounted) return;
-    if (metaRes.statusCode != 200) {
+    if (metaResult.isErr) {
       _showError('Could not fetch file metadata');
       return;
     }
-    final metaBody = jsonDecode(metaRes.body) as Map<String, dynamic>;
-    final versionToken = metaBody['versionToken'] as String;
+    final versionToken = metaResult.unwrap.versionToken;
 
     final picked = await FilePicker.platform.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
@@ -451,37 +401,31 @@ class _BrowseScreenState extends State<_BrowseScreen> {
     Uint8List bytes, {
     required String ifMatch,
   }) async {
-    final uri = Uri.parse(
-      '${widget.base}/roots/${widget.alias}/file',
-    ).replace(queryParameters: {'path': remotePath});
-
-    final res = await http.put(
-      uri,
-      headers: {
-        'authorization': 'Bearer ${widget.sessionToken}',
-        'content-type': 'application/octet-stream',
-        'if-match': ifMatch,
-      },
-      body: bytes,
+    final result = await widget.client.uploadFile(
+      widget.alias,
+      remotePath,
+      bytes,
+      ifMatch: ifMatch,
     );
 
     if (!mounted) return;
 
-    if (res.statusCode == 200) {
+    if (result.isOk) {
       await _load();
       return;
     }
 
-    if (res.statusCode == 409) {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final latestToken = body['versionToken'] as String;
+    if (result.errorCode == 'VERSION_CONFLICT') {
+      // Re-fetch the latest token so we can offer retry.
+      final metaResult =
+          await widget.client.getMetadata(widget.alias, remotePath);
+      final latestToken =
+          metaResult.isOk ? metaResult.unwrap.versionToken : '*';
       _showConflictDialog(remotePath, bytes, latestToken);
       return;
     }
 
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final err = body['error'] as Map<String, dynamic>?;
-    _showError(err?['message'] as String? ?? 'Upload failed');
+    _showError(result.errorMessage);
   }
 
   // ─── Conflict resolution dialog ──────────────────────────────────────────
@@ -570,23 +514,14 @@ class _BrowseScreenState extends State<_BrowseScreen> {
     );
     if (confirmed != true) return;
 
-    final uri = Uri.parse(
-      '${widget.base}/roots/${widget.alias}/file',
-    ).replace(queryParameters: {'path': remotePath});
-
-    final res = await http.delete(
-      uri,
-      headers: {'authorization': 'Bearer ${widget.sessionToken}'},
-    );
+    final result = await widget.client.deleteItem(widget.alias, remotePath);
 
     if (!mounted) return;
 
-    if (res.statusCode == 200) {
+    if (result.isOk) {
       await _load();
     } else {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final err = body['error'] as Map<String, dynamic>?;
-      _showError(err?['message'] as String? ?? 'Delete failed');
+      _showError(result.errorMessage);
     }
   }
 
@@ -613,8 +548,8 @@ class _BrowseScreenState extends State<_BrowseScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => FilePreviewScreen(
-                      base: widget.base,
-                      sessionToken: widget.sessionToken,
+                      base: widget.client.baseUrl,
+                      sessionToken: widget.client.sessionToken,
                       alias: widget.alias,
                       remotePath: remotePath,
                       fileName: name,
@@ -660,17 +595,10 @@ class _BrowseScreenState extends State<_BrowseScreen> {
   }
 
   Future<void> _downloadFile(String remotePath, String name) async {
-    final uri = Uri.parse(
-      '${widget.base}/roots/${widget.alias}/file',
-    ).replace(queryParameters: {'path': remotePath});
-
-    final res = await http.get(
-      uri,
-      headers: {'authorization': 'Bearer ${widget.sessionToken}'},
-    );
+    final result = await widget.client.downloadFile(widget.alias, remotePath);
 
     if (!mounted) return;
-    if (res.statusCode == 200) {
+    if (result.isOk) {
       final downloadFolder = _downloadFolder ?? _defaultDownloadFolder();
       final directory = Directory(downloadFolder);
       if (!directory.existsSync()) {
@@ -679,13 +607,14 @@ class _BrowseScreenState extends State<_BrowseScreen> {
 
       final fileName = p.basename(name.isNotEmpty ? name : remotePath);
       final outputPath = p.join(downloadFolder, fileName);
-      await File(outputPath).writeAsBytes(res.bodyBytes, flush: true);
+      await File(outputPath).writeAsBytes(result.unwrap, flush: true);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Saved to $outputPath')),
       );
     } else {
-      _showError('Download failed: ${res.statusCode}');
+      _showError('Download failed: ${result.errorMessage}');
     }
   }
 
@@ -758,8 +687,7 @@ class _BrowseScreenState extends State<_BrowseScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (_) => _BrowseScreen(
-                                            base: widget.base,
-                                            sessionToken: widget.sessionToken,
+                                            client: widget.client,
                                             alias: widget.alias,
                                             path: entry['path'] as String,
                                             role: widget.role,
