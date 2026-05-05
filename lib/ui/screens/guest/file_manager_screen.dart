@@ -18,6 +18,7 @@ import '../../widgets/file_manager/file_list_tile.dart';
 import '../../widgets/file_manager/sort_menu.dart';
 import '../../widgets/file_manager/view_mode_toggle.dart';
 import 'file_preview_screen.dart';
+import 'text_editor_screen.dart';
 
 // ─── State model ────────────────────────────────────────────────────────────
 
@@ -799,8 +800,54 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       _state.clearSelection();
       _load();
     } else {
-      _showFileActions(entry);
+      _openFile(entry);
     }
+  }
+
+  static bool _isTextFile(String name) {
+    final ext = name.contains('.')
+        ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
+        : '';
+    const textExts = {
+      'txt', 'md', 'markdown', 'json', 'yaml', 'yml', 'toml', 'csv',
+      'html', 'htm', 'xml', 'svg', 'css', 'js', 'mjs', 'ts', 'dart',
+      'py', 'sh', 'bash', 'bat', 'log', 'ini', 'cfg', 'conf',
+      'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'java', 'go', 'rs',
+    };
+    return textExts.contains(ext);
+  }
+
+  void _openFile(FileEntry entry) {
+    if (_isTextFile(entry.name)) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TextEditorScreen(
+            client: widget.client,
+            alias: widget.alias,
+            remotePath: entry.path,
+            fileName: entry.name,
+            fileSize: entry.size,
+            canWrite: _canWrite,
+          ),
+        ),
+      );
+      return;
+    }
+    // Non-text: open preview (images, binary, etc.)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FilePreviewScreen(
+          base: widget.client.baseUrl,
+          sessionToken: widget.client.sessionToken,
+          alias: widget.alias,
+          remotePath: entry.path,
+          fileName: entry.name,
+          fileSize: entry.size,
+        ),
+      ),
+    );
   }
 
   Widget _buildBottomBar() {

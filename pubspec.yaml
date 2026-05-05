@@ -46,6 +46,8 @@ dependencies:
   http: ^1.2.2
   # Persistence
   shared_preferences: ^2.3.5
+  re_editor: ^0.8.0
+  re_highlight: ^0.0.3
 
 dev_dependencies:
   flutter_test:
