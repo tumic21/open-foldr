@@ -29,6 +29,9 @@ class AppConstants {
   // Max chunk size for resumable uploads (4 MiB).
   static const int maxChunkBytes = 4 * 1024 * 1024;
 
+  // Max chunk size for resumable downloads (16 MiB) to reduce request overhead.
+  static const int maxDownloadChunkBytes = 16 * 1024 * 1024;
+
   // Max concurrent transfers per client.
   static const int maxConcurrentTransfers = 4;
 

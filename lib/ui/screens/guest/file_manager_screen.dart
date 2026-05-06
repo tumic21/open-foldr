@@ -52,8 +52,7 @@ class FileManagerState extends ChangeNotifier {
   bool isLoading = true;
   String? error;
 
-  FileManagerState({String initialPath = '/'})
-      : _pathStack = [initialPath];
+  FileManagerState({String initialPath = '/'}) : _pathStack = [initialPath];
 
   String get currentPath => _pathStack.last;
   bool get canGoUp => _pathStack.length > 1;
@@ -191,15 +190,15 @@ class FileManagerState extends ChangeNotifier {
       SortField.size => (a, b) => a.size.compareTo(b.size),
       SortField.date => (a, b) => a.modifiedAt.compareTo(b.modifiedAt),
       SortField.type => (a, b) {
-          final extA = a.name.contains('.')
-              ? a.name.substring(a.name.lastIndexOf('.'))
-              : '';
-          final extB = b.name.contains('.')
-              ? b.name.substring(b.name.lastIndexOf('.'))
-              : '';
-          final ext = extA.compareTo(extB);
-          return ext != 0 ? ext : a.name.compareTo(b.name);
-        },
+        final extA = a.name.contains('.')
+            ? a.name.substring(a.name.lastIndexOf('.'))
+            : '';
+        final extB = b.name.contains('.')
+            ? b.name.substring(b.name.lastIndexOf('.'))
+            : '';
+        final ext = extA.compareTo(extB);
+        return ext != 0 ? ext : a.name.compareTo(b.name);
+      },
     };
 
     if (sortOrder == SortOrder.desc) {
@@ -215,15 +214,41 @@ class FileManagerState extends ChangeNotifier {
 
 // ─── Keyboard shortcut intents ───────────────────────────────────────────────
 
-class _CopyIntent extends Intent { const _CopyIntent(); }
-class _CutIntent extends Intent { const _CutIntent(); }
-class _PasteIntent extends Intent { const _PasteIntent(); }
-class _SelectAllIntent extends Intent { const _SelectAllIntent(); }
-class _DeleteIntent extends Intent { const _DeleteIntent(); }
-class _RenameIntent extends Intent { const _RenameIntent(); }
-class _NewFolderIntent extends Intent { const _NewFolderIntent(); }
-class _NavUpIntent extends Intent { const _NavUpIntent(); }
-class _OpenIntent extends Intent { const _OpenIntent(); }
+class _CopyIntent extends Intent {
+  const _CopyIntent();
+}
+
+class _CutIntent extends Intent {
+  const _CutIntent();
+}
+
+class _PasteIntent extends Intent {
+  const _PasteIntent();
+}
+
+class _SelectAllIntent extends Intent {
+  const _SelectAllIntent();
+}
+
+class _DeleteIntent extends Intent {
+  const _DeleteIntent();
+}
+
+class _RenameIntent extends Intent {
+  const _RenameIntent();
+}
+
+class _NewFolderIntent extends Intent {
+  const _NewFolderIntent();
+}
+
+class _NavUpIntent extends Intent {
+  const _NavUpIntent();
+}
+
+class _OpenIntent extends Intent {
+  const _OpenIntent();
+}
 
 // ─── FileManagerScreen ───────────────────────────────────────────────────────
 
@@ -250,16 +275,21 @@ class FileManagerScreen extends StatefulWidget {
     this.onOpenFile,
     Object? watcherFactory = _unsetFactory,
   }) : watcherFactory = watcherFactory == _unsetFactory
-            ? ((watchPath) => WatchClient(
-                  baseUrl: client.baseUrl,
-                  sessionToken: client.sessionToken,
-                  alias: alias,
-                  watchPath: watchPath,
-                ))
-            : watcherFactory as WatchClient? Function(String)?;
+           ? ((watchPath) => WatchClient(
+               baseUrl: client.baseUrl,
+               sessionToken: client.sessionToken,
+               alias: alias,
+               watchPath: watchPath,
+             ))
+           : watcherFactory as WatchClient? Function(String)?;
 
   @override
   State<FileManagerScreen> createState() => _FileManagerScreenState();
+}
+
+class _DownloadControlState {
+  bool paused = false;
+  bool aborted = false;
 }
 
 class _FileManagerScreenState extends State<FileManagerScreen> {
@@ -276,6 +306,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   WatchClient? _watcher;
   final Map<String, UploadProgressItem> _uploadProgress = {};
+  final Map<String, UploadProgressItem> _downloadProgress = {};
+  final Map<String, _DownloadControlState> _downloadControls = {};
+  int _roleRefreshFailures = 0;
+  static const _maxRoleRefreshFailures = 3;
 
   String get _normalizedRole => _sessionRole.trim().toLowerCase();
 
@@ -312,6 +346,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   void _startRoleRefresh() {
     _roleRefreshTimer?.cancel();
+    _roleRefreshFailures = 0;
     _roleRefreshTimer = Timer.periodic(
       _roleRefreshInterval,
       (_) => _refreshSessionRole(),
@@ -320,8 +355,19 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _refreshSessionRole() async {
     final result = await widget.client.getSessionRole();
-    if (!mounted || result.isErr) return;
+    if (!mounted) return;
+    if (result.isErr) {
+      _roleRefreshFailures++;
+      if (_roleRefreshFailures >= _maxRoleRefreshFailures) {
+        // Token has likely expired or the endpoint is unavailable.
+        // Stop polling to avoid spamming the host's server with failed requests.
+        _roleRefreshTimer?.cancel();
+        _roleRefreshTimer = null;
+      }
+      return;
+    }
 
+    _roleRefreshFailures = 0;
     final nextRole = result.unwrap;
     if (nextRole == _sessionRole) return;
 
@@ -334,7 +380,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   String _defaultDownloadFolder() {
     final home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '';
     if (home.isEmpty) return 'Downloads/OpenFoldr';
     return p.join(home, 'Downloads', 'OpenFoldr');
   }
@@ -375,8 +423,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _load() async {
     _state.setLoading();
-    final result =
-        await widget.client.listEntries(widget.alias, _state.currentPath);
+    final result = await widget.client.listEntries(
+      widget.alias,
+      _state.currentPath,
+    );
     if (!mounted) return;
     if (result.isOk) {
       _state.setEntries(result.unwrap);
@@ -405,8 +455,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Upload ────────────────────────────────────────────────────────────────
 
   Future<void> _uploadNewFile() async {
-    final picked =
-        await FilePicker.pickFiles(withData: true);
+    final picked = await FilePicker.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.first;
     final bytes = file.bytes;
@@ -415,7 +464,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final remotePath =
         '${_state.currentPath == '/' ? '' : _state.currentPath}/${file.name}';
     final result = await widget.client.uploadFile(
-        widget.alias, remotePath, bytes);
+      widget.alias,
+      remotePath,
+      bytes,
+    );
     if (!mounted) return;
     if (result.isOk) {
       await _load();
@@ -425,36 +477,47 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   Future<void> _uploadNewVersion(String remotePath) async {
-    final metaResult =
-        await widget.client.getMetadata(widget.alias, remotePath);
+    final metaResult = await widget.client.getMetadata(
+      widget.alias,
+      remotePath,
+    );
     if (!mounted) return;
     if (metaResult.isErr) {
       _showError('Could not fetch file metadata');
       return;
     }
     final versionToken = metaResult.unwrap.versionToken;
-    final picked =
-        await FilePicker.pickFiles(withData: true);
+    final picked = await FilePicker.pickFiles(withData: true);
     if (picked == null || picked.files.isEmpty) return;
     final bytes = picked.files.first.bytes;
     if (bytes == null) return;
     await _doPut(remotePath, bytes, ifMatch: versionToken);
   }
 
-  Future<void> _doPut(String remotePath, Uint8List bytes,
-      {required String ifMatch}) async {
-    final result = await widget.client
-        .uploadFile(widget.alias, remotePath, bytes, ifMatch: ifMatch);
+  Future<void> _doPut(
+    String remotePath,
+    Uint8List bytes, {
+    required String ifMatch,
+  }) async {
+    final result = await widget.client.uploadFile(
+      widget.alias,
+      remotePath,
+      bytes,
+      ifMatch: ifMatch,
+    );
     if (!mounted) return;
     if (result.isOk) {
       await _load();
       return;
     }
     if (result.errorCode == 'VERSION_CONFLICT') {
-      final metaResult =
-          await widget.client.getMetadata(widget.alias, remotePath);
-      final latestToken =
-          metaResult.isOk ? metaResult.unwrap.versionToken : '*';
+      final metaResult = await widget.client.getMetadata(
+        widget.alias,
+        remotePath,
+      );
+      final latestToken = metaResult.isOk
+          ? metaResult.unwrap.versionToken
+          : '*';
       _showConflictDialog(remotePath, bytes, latestToken);
       return;
     }
@@ -463,11 +526,90 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   // ─── Download ──────────────────────────────────────────────────────────────
 
+  void _updateDownloadProgressItem(
+    String remotePath,
+    String name,
+    double progress, {
+    bool complete = false,
+    String? error,
+  }) {
+    final control = _downloadControls[remotePath];
+    _downloadProgress[remotePath] = UploadProgressItem(
+      name: name,
+      progress: progress,
+      complete: complete,
+      paused: control?.paused ?? false,
+      error: error,
+      onPause:
+          (control != null && !complete && error == null && !control.paused)
+          ? () {
+              setState(() {
+                control.paused = true;
+                _updateDownloadProgressItem(
+                  remotePath,
+                  name,
+                  progress,
+                  complete: complete,
+                );
+              });
+            }
+          : null,
+      onResume:
+          (control != null && !complete && error == null && control.paused)
+          ? () {
+              setState(() {
+                control.paused = false;
+                _updateDownloadProgressItem(
+                  remotePath,
+                  name,
+                  progress,
+                  complete: complete,
+                );
+              });
+            }
+          : null,
+      onAbort: (control != null && !complete)
+          ? () {
+              setState(() {
+                control.aborted = true;
+              });
+            }
+          : null,
+    );
+  }
+
   Future<void> _downloadFile(String remotePath, String name) async {
-    final result =
-        await widget.client.downloadFile(widget.alias, remotePath);
-    if (!mounted) return;
-    if (result.isOk) {
+    final downloadManager = ResumableDownloadManager(
+      base: widget.client.baseUrl,
+      sessionToken: widget.client.sessionToken,
+    );
+    final control = _DownloadControlState();
+
+    setState(() {
+      _downloadControls[remotePath] = control;
+      _updateDownloadProgressItem(remotePath, name, 0);
+    });
+
+    try {
+      final bytes = await downloadManager.download(
+        alias: widget.alias,
+        remotePath: remotePath,
+        isPaused: () => control.paused,
+        isAborted: () => control.aborted,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _updateDownloadProgressItem(
+              remotePath,
+              name,
+              progress.fraction,
+              complete: progress.complete,
+            );
+          });
+        },
+      );
+      if (!mounted) return;
+
       final folder = _downloadFolder ?? _defaultDownloadFolder();
       final dir = Directory(folder);
       if (!dir.existsSync()) {
@@ -475,14 +617,72 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       }
       final fileName = p.basename(name.isNotEmpty ? name : remotePath);
       final outputPath = p.join(folder, fileName);
-      await File(outputPath).writeAsBytes(result.unwrap, flush: true);
+      await File(outputPath).writeAsBytes(bytes, flush: true);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved to $outputPath')),
-      );
-    } else {
-      _showError('Download failed: ${result.errorMessage}');
+
+      setState(() {
+        _updateDownloadProgressItem(remotePath, name, 1, complete: true);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Saved to $outputPath')));
+    } catch (e) {
+      if (!mounted) return;
+      if (e is TransferAbortedException) {
+        setState(() {
+          _downloadProgress.remove(remotePath);
+          _downloadControls.remove(remotePath);
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Download aborted')));
+        return;
+      }
+      setState(() {
+        _updateDownloadProgressItem(remotePath, name, 0, error: e.toString());
+      });
+      _showError('Download failed: $e');
+    } finally {
+      downloadManager.dispose();
+      if (mounted) {
+        Future<void>.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          setState(() {
+            _downloadProgress.remove(remotePath);
+            _downloadControls.remove(remotePath);
+          });
+        });
+      }
     }
+  }
+
+  Future<bool> _confirmBinaryDownload(FileEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Download file?'),
+        content: Text(
+          'This file cannot be previewed. Download "${entry.name}" (${_formatSize(entry.size)})?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────
@@ -494,8 +694,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       itemName: name,
     );
     if (!confirmed) return;
-    final result =
-        await widget.client.deleteItem(widget.alias, remotePath);
+    final result = await widget.client.deleteItem(widget.alias, remotePath);
     if (!mounted) return;
     if (result.isOk) {
       await _load();
@@ -515,8 +714,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         : '';
     final newPath = dir.isEmpty ? '/$newName' : '$dir/$newName';
 
-    final result =
-        await widget.client.rename(widget.alias, entry.path, newPath);
+    final result = await widget.client.rename(
+      widget.alias,
+      entry.path,
+      newPath,
+    );
     if (!mounted) return;
     if (result.isOk) {
       await _load();
@@ -528,7 +730,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Conflict dialog (upload version conflict) ──────────────────────────────
 
   void _showConflictDialog(
-      String remotePath, Uint8List bytes, String latestToken) {
+    String remotePath,
+    Uint8List bytes,
+    String latestToken,
+  ) {
     // The upload-version conflict reuses the generic conflict dialog shape
     // but maps actions to the upload retry flow.
     showDialog<ConflictResolution?>(
@@ -541,23 +746,21 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, ConflictResolution.skip),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, ConflictResolution.skip),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, ConflictResolution.keepBoth),
+            onPressed: () => Navigator.pop(ctx, ConflictResolution.keepBoth),
             child: const Text('Save as Copy'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, ConflictResolution.replace),
+            onPressed: () => Navigator.pop(ctx, ConflictResolution.replace),
             child: const Text('Retry with Latest'),
           ),
           if (_canDelete)
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () =>
-                  Navigator.pop(ctx, ConflictResolution.replace),
+              onPressed: () => Navigator.pop(ctx, ConflictResolution.replace),
               child: const Text('Force Overwrite'),
             ),
         ],
@@ -585,10 +788,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   Future<void> _createFile() async {
     final name = await _showCreateFileDialog();
     if (name == null || name.isEmpty) return;
-    final path =
-        '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
-    final result =
-        await widget.client.uploadFile(widget.alias, path, Uint8List(0));
+    final path = '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
+    final result = await widget.client.uploadFile(
+      widget.alias,
+      path,
+      Uint8List(0),
+    );
     if (!mounted) return;
     if (result.isOk) {
       await _load();
@@ -614,10 +819,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             decoration: InputDecoration(
               labelText: 'File name',
               border: const OutlineInputBorder(),
-              errorText:
-                  controller.text.isNotEmpty && !isValid(controller.text)
-                      ? 'Name cannot contain / or be . or ..'
-                      : null,
+              errorText: controller.text.isNotEmpty && !isValid(controller.text)
+                  ? 'Name cannot contain / or be . or ..'
+                  : null,
             ),
             onChanged: (_) => setState(() {}),
             onSubmitted: (v) {
@@ -645,8 +849,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   Future<void> _createFolder() async {
     final name = await showCreateFolderDialog(context);
     if (name == null || name.isEmpty) return;
-    final path =
-        '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
+    final path = '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
     final result = await widget.client.mkdir(widget.alias, path);
     if (!mounted) return;
     if (result.isOk) {
@@ -725,8 +928,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             if (_canDelete)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Delete',
-                    style: TextStyle(color: Colors.red)),
+                title: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _deleteEntry(entry.path, entry.name);
@@ -765,8 +970,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: () async {
-                  final selected =
-                      await FilePicker.getDirectoryPath();
+                  final selected = await FilePicker.getDirectoryPath();
                   if (selected != null && selected.isNotEmpty) {
                     controller.text = selected;
                   }
@@ -779,8 +983,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Save'),
@@ -793,8 +998,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'Download folder set to ${controller.text.trim()}')),
+          content: Text('Download folder set to ${controller.text.trim()}'),
+        ),
       );
     }
   }
@@ -822,26 +1027,26 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   Widget build(BuildContext context) {
     final shortcuts = <ShortcutActivator, Intent>{
       const SingleActivator(LogicalKeyboardKey.keyC, control: true):
-        const _CopyIntent(),
+          const _CopyIntent(),
       const SingleActivator(LogicalKeyboardKey.keyX, control: true):
-        const _CutIntent(),
+          const _CutIntent(),
       const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-        const _PasteIntent(),
+          const _PasteIntent(),
       const SingleActivator(LogicalKeyboardKey.keyA, control: true):
-        const _SelectAllIntent(),
+          const _SelectAllIntent(),
       const SingleActivator(LogicalKeyboardKey.f2): const _RenameIntent(),
       const SingleActivator(LogicalKeyboardKey.keyN, control: true):
-        const _NewFolderIntent(),
+          const _NewFolderIntent(),
       const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
-        const _NavUpIntent(),
+          const _NavUpIntent(),
       const SingleActivator(LogicalKeyboardKey.enter): const _OpenIntent(),
     };
     if (!_searchActive) {
       // Keep text-editing keys free for the search field when search is open.
       shortcuts[const SingleActivator(LogicalKeyboardKey.delete)] =
-        const _DeleteIntent();
+          const _DeleteIntent();
       shortcuts[const SingleActivator(LogicalKeyboardKey.backspace)] =
-        const _NavUpIntent();
+          const _NavUpIntent();
     }
 
     return PopScope(
@@ -958,7 +1163,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                     currentPath: _state.currentPath,
                     onDropPaths: _isDesktop && _canWrite
                         ? (paths, destination) =>
-                            _moveDraggedPaths(paths, destination)
+                              _moveDraggedPaths(paths, destination)
                         : null,
                     onNavigateTo: (path) async {
                       _state.navigateTo(path);
@@ -979,9 +1184,27 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                         ),
                         Positioned.fill(
                           child: IgnorePointer(
-                            ignoring: true,
-                            child: UploadProgressOverlay(
-                              items: _uploadProgress.values.toList(),
+                            ignoring: false,
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    UploadProgressOverlay(
+                                      items: _downloadProgress.values.toList(),
+                                      title: 'Downloading files',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    UploadProgressOverlay(
+                                      items: _uploadProgress.values.toList(),
+                                      title: 'Uploading files',
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -997,8 +1220,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                       child: const Icon(Icons.add),
                     )
                   : null,
-              bottomNavigationBar:
-                  _state.hasSelection ? _buildBottomBar() : null,
+              bottomNavigationBar: _state.hasSelection
+                  ? _buildBottomBar()
+                  : null,
             ),
           ),
         ),
@@ -1058,10 +1282,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             tooltip: 'Search',
             onPressed: _openSearch,
           ),
-          ViewModeToggle(
-            mode: _state.viewMode,
-            onChanged: _state.setViewMode,
-          ),
+          ViewModeToggle(mode: _state.viewMode, onChanged: _state.setViewMode),
           SortMenu(
             sortBy: _state.sortBy,
             sortOrder: _state.sortOrder,
@@ -1118,9 +1339,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
           children: [
             const SizedBox(height: 120),
             Center(
-              child: Text(_state.searchQuery.isNotEmpty
-                  ? 'No results for "${_state.searchQuery}"'
-                  : 'Empty folder'),
+              child: Text(
+                _state.searchQuery.isNotEmpty
+                    ? 'No results for "${_state.searchQuery}"'
+                    : 'Empty folder',
+              ),
             ),
           ],
         ),
@@ -1145,8 +1368,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               entry: entry,
               selected: _state.selectedPaths.contains(entry.path),
               multiSelectMode: _state.multiSelectMode,
-              draggablePaths:
-                  _isDesktop && _canWrite ? _dragPayloadForEntry(entry) : null,
+              draggablePaths: _isDesktop && _canWrite
+                  ? _dragPayloadForEntry(entry)
+                  : null,
               onDragStarted: _isDesktop && _canWrite
                   ? () => _handleDragStarted(entry)
                   : null,
@@ -1174,8 +1398,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             entry: entry,
             selected: _state.selectedPaths.contains(entry.path),
             multiSelectMode: _state.multiSelectMode,
-            draggablePaths:
-                _isDesktop && _canWrite ? _dragPayloadForEntry(entry) : null,
+            draggablePaths: _isDesktop && _canWrite
+                ? _dragPayloadForEntry(entry)
+                : null,
             onDragStarted: _isDesktop && _canWrite
                 ? () => _handleDragStarted(entry)
                 : null,
@@ -1214,10 +1439,40 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
         : '';
     const textExts = {
-      'txt', 'md', 'markdown', 'json', 'yaml', 'yml', 'toml', 'csv',
-      'html', 'htm', 'xml', 'svg', 'css', 'js', 'mjs', 'ts', 'dart',
-      'py', 'sh', 'bash', 'bat', 'log', 'ini', 'cfg', 'conf',
-      'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'java', 'go', 'rs',
+      'txt',
+      'md',
+      'markdown',
+      'json',
+      'yaml',
+      'yml',
+      'toml',
+      'csv',
+      'html',
+      'htm',
+      'xml',
+      'svg',
+      'css',
+      'js',
+      'mjs',
+      'ts',
+      'dart',
+      'py',
+      'sh',
+      'bash',
+      'bat',
+      'log',
+      'ini',
+      'cfg',
+      'conf',
+      'c',
+      'h',
+      'cpp',
+      'cc',
+      'cxx',
+      'hpp',
+      'java',
+      'go',
+      'rs',
     };
     return textExts.contains(ext);
   }
@@ -1226,15 +1481,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final ext = name.contains('.')
         ? name.substring(name.lastIndexOf('.') + 1).toLowerCase()
         : '';
-    const imageExts = {
-      'jpg',
-      'jpeg',
-      'png',
-      'gif',
-      'webp',
-      'bmp',
-      'ico',
-    };
+    const imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'};
     return imageExts.contains(ext);
   }
 
@@ -1302,7 +1549,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     // Unsupported previews fall back to direct download.
     widget.onOpenFile?.call('download', entry);
     if (widget.onOpenFile != null) return;
-    _downloadFile(entry.path, entry.name);
+    _confirmBinaryDownload(entry).then((confirmed) {
+      if (!confirmed || !mounted) return;
+      _downloadFile(entry.path, entry.name);
+    });
   }
 
   Widget _buildBottomBar() {
@@ -1360,11 +1610,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final destination = _state.currentPath;
 
     if (clip.operation == 'copy') {
-      await widget.client
-          .batchCopy(widget.alias, clip.items, destination);
+      await widget.client.batchCopy(widget.alias, clip.items, destination);
     } else {
-      await widget.client
-          .batchMove(widget.alias, clip.items, destination);
+      await widget.client.batchMove(widget.alias, clip.items, destination);
     }
     if (!mounted) return;
     if (clip.operation == 'cut') _state.clearClipboard();
@@ -1374,14 +1622,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _deleteSelected() async {
     final count = _state.selectedPaths.length;
-    final confirmed = await showConfirmDeleteDialog(
-      context,
-      itemCount: count,
-    );
+    final confirmed = await showConfirmDeleteDialog(context, itemCount: count);
     if (!confirmed) return;
 
-    await widget.client
-        .batchDelete(widget.alias, _state.selectedPaths.toList());
+    await widget.client.batchDelete(
+      widget.alias,
+      _state.selectedPaths.toList(),
+    );
     if (!mounted) return;
     _state.clearSelection();
     await _load();
@@ -1443,16 +1690,14 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
-  void _handleDragCompleted() {
-  }
+  void _handleDragCompleted() {}
 
   bool _isInvalidMove(String source, String destination) {
     if (source == destination) return true;
     return destination.startsWith('$source/');
   }
 
-  Future<void> _moveDraggedPaths(
-      List<String> paths, String destination) async {
+  Future<void> _moveDraggedPaths(List<String> paths, String destination) async {
     if (!_canWrite) return;
     if (paths.isEmpty) return;
 
@@ -1462,8 +1707,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       return;
     }
 
-    final result =
-        await widget.client.batchMove(widget.alias, unique, destination);
+    final result = await widget.client.batchMove(
+      widget.alias,
+      unique,
+      destination,
+    );
     if (!mounted) return;
     if (result.isErr) {
       _showError(result.errorMessage);

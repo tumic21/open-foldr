@@ -455,5 +455,23 @@ void main() {
 
       expect(openedKind, 'download');
     });
+
+    testWidgets('unknown file click asks confirmation before download',
+        (tester) async {
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('archive.bin')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('archive.bin'));
+      await tester.pump();
+
+      expect(find.text('Download file?'), findsOneWidget);
+      expect(find.text('Download'), findsOneWidget);
+    });
   });
 }

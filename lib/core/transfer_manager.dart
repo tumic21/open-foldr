@@ -25,6 +25,16 @@ class TransferProgress {
   double get fraction => total == 0 ? 0 : transferred / total;
 }
 
+/// Error raised when a transfer is canceled by the user.
+class TransferAbortedException implements Exception {
+  final String message;
+
+  const TransferAbortedException([this.message = 'Transfer aborted']);
+
+  @override
+  String toString() => message;
+}
+
 /// Client-side resumable upload manager.
 ///
 /// Chunks a file into [AppConstants.maxChunkBytes]-sized pieces, sends them
@@ -123,11 +133,13 @@ class ResumableUploadManager {
       final body = jsonDecode(chunkRes.body) as Map<String, dynamic>;
       offset = body['offset'] as int;
 
-      onProgress?.call(TransferProgress(
-        path: remotePath,
-        total: totalSize,
-        transferred: offset,
-      ));
+      onProgress?.call(
+        TransferProgress(
+          path: remotePath,
+          total: totalSize,
+          transferred: offset,
+        ),
+      );
     }
 
     // ── 3. Complete with checksum ───────────────────────────────────────────
@@ -152,12 +164,14 @@ class ResumableUploadManager {
     final completeBody = jsonDecode(completeRes.body) as Map<String, dynamic>;
     final versionToken = completeBody['versionToken'] as String;
 
-    onProgress?.call(TransferProgress(
-      path: remotePath,
-      total: totalSize,
-      transferred: totalSize,
-      complete: true,
-    ));
+    onProgress?.call(
+      TransferProgress(
+        path: remotePath,
+        total: totalSize,
+        transferred: totalSize,
+        complete: true,
+      ),
+    );
 
     return versionToken;
   }
@@ -180,9 +194,7 @@ class ResumableUploadManager {
     );
 
     if (res.statusCode != 200) {
-      throw Exception(
-        'Upload init failed (${res.statusCode}): ${res.body}',
-      );
+      throw Exception('Upload init failed (${res.statusCode}): ${res.body}');
     }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -214,12 +226,15 @@ class ResumableDownloadManager {
     required String alias,
     required String remotePath,
     void Function(TransferProgress)? onProgress,
+    bool Function()? isPaused,
+    bool Function()? isAborted,
   }) async {
     // ── 1. Fetch metadata to get total size ─────────────────────────────────
     final metaRes = await withRetry(
       (_) => _client.get(
-        Uri.parse('$base/roots/$alias/metadata')
-            .replace(queryParameters: {'path': remotePath}),
+        Uri.parse(
+          '$base/roots/$alias/metadata',
+        ).replace(queryParameters: {'path': remotePath}),
         headers: {'authorization': 'Bearer $sessionToken'},
       ),
       shouldRetry: _shouldRetry,
@@ -239,15 +254,26 @@ class ResumableDownloadManager {
     // ── 2. Download in chunks using Range requests ───────────────────────────
     final chunks = <Uint8List>[];
     var received = 0;
-    final chunkSize = AppConstants.maxChunkBytes;
+    final chunkSize = AppConstants.maxDownloadChunkBytes;
 
     while (received < totalSize) {
+      if (isAborted?.call() == true) {
+        throw const TransferAbortedException();
+      }
+      while (isPaused?.call() == true) {
+        if (isAborted?.call() == true) {
+          throw const TransferAbortedException();
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+
       final end = min(received + chunkSize - 1, totalSize - 1);
 
       final res = await withRetry(
         (_) => _client.get(
-          Uri.parse('$base/roots/$alias/file')
-              .replace(queryParameters: {'path': remotePath}),
+          Uri.parse(
+            '$base/roots/$alias/file',
+          ).replace(queryParameters: {'path': remotePath}),
           headers: {
             'authorization': 'Bearer $sessionToken',
             'range': 'bytes=$received-$end',
@@ -257,21 +283,21 @@ class ResumableDownloadManager {
       );
 
       if (res.statusCode != 206 && res.statusCode != 200) {
-        throw Exception(
-          'Download failed (${res.statusCode}): ${res.body}',
-        );
+        throw Exception('Download failed (${res.statusCode}): ${res.body}');
       }
 
       final chunk = res.bodyBytes;
       chunks.add(chunk);
       received += chunk.length;
 
-      onProgress?.call(TransferProgress(
-        path: remotePath,
-        total: totalSize,
-        transferred: received,
-        complete: received >= totalSize,
-      ));
+      onProgress?.call(
+        TransferProgress(
+          path: remotePath,
+          total: totalSize,
+          transferred: received,
+          complete: received >= totalSize,
+        ),
+      );
     }
 
     // Assemble full file.
