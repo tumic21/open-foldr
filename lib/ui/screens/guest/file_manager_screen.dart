@@ -269,13 +269,16 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   bool _searchActive = false;
   final TextEditingController _searchController = TextEditingController();
+    String? _lastUiLogSignature;
 
   WatchClient? _watcher;
   final Map<String, UploadProgressItem> _uploadProgress = {};
 
+    String get _normalizedRole => widget.role.trim().toLowerCase();
+
   bool get _canWrite =>
-      widget.role == 'editor' || widget.role == 'owner';
-  bool get _canDelete => widget.role == 'owner';
+      _normalizedRole == 'editor' || _normalizedRole == 'owner';
+    bool get _canDelete => _normalizedRole == 'owner';
   bool get _isDesktop =>
       Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
@@ -284,6 +287,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     super.initState();
     _state = FileManagerState(initialPath: widget.initialPath);
     _state.addListener(_onStateChanged);
+    _logUiState('init', force: true);
     _loadDownloadFolder();
     _load();
   }
@@ -298,7 +302,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   void _onStateChanged() {
+    _logUiState('state-change');
     if (mounted) setState(() {});
+  }
+
+  void _logUiState(String source, {bool force = false}) {
+    final signature = '$source|raw=${widget.role}|normalized=$_normalizedRole|'
+        'write=$_canWrite|delete=$_canDelete|selected=${_state.selectedPaths.length}|'
+        'multi=${_state.multiSelectMode}|search=$_searchActive|path=${_state.currentPath}';
+    if (!force && signature == _lastUiLogSignature) return;
+    _lastUiLogSignature = signature;
+    debugPrint('[FileManagerScreen] $signature');
   }
 
   // ─── Settings ─────────────────────────────────────────────────────────────
@@ -345,14 +359,21 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Load directory ────────────────────────────────────────────────────────
 
   Future<void> _load() async {
+    _logUiState('load-start', force: true);
     _state.setLoading();
     final result =
         await widget.client.listEntries(widget.alias, _state.currentPath);
     if (!mounted) return;
     if (result.isOk) {
       _state.setEntries(result.unwrap);
+      debugPrint(
+        '[FileManagerScreen] load-success alias=${widget.alias} path=${_state.currentPath} count=${result.unwrap.length}',
+      );
     } else {
       _state.setError(result.errorMessage);
+      debugPrint(
+        '[FileManagerScreen] load-error alias=${widget.alias} path=${_state.currentPath} error=${result.errorMessage}',
+      );
     }
     _startWatcher();
   }
@@ -366,8 +387,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final newWatcher = widget.watcherFactory?.call(_state.currentPath);
     if (newWatcher == null) return;
     _watcher = newWatcher;
+    debugPrint(
+      '[FileManagerScreen] watch-start alias=${widget.alias} path=${_state.currentPath} role=$_normalizedRole',
+    );
     _watcher!.events.listen((event) {
       // On any filesystem change, reload the current directory listing.
+      debugPrint('[FileManagerScreen] watch-event $event');
       if (mounted) _load();
     });
     _watcher!.connect();
@@ -778,12 +803,14 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   void _openSearch() {
+    _logUiState('search-open', force: true);
     setState(() => _searchActive = true);
   }
 
   void _closeSearch() {
     _searchController.clear();
     _state.clearSearch();
+    _logUiState('search-close', force: true);
     setState(() => _searchActive = false);
   }
 

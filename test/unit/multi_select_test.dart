@@ -417,6 +417,26 @@ void main() {
       expect(find.byTooltip('New item'), findsNothing);
     });
 
+    testWidgets('floating action button is visible for Owner role casing',
+        (tester) async {
+      final client = _mockClient([_file('a.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'Owner',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.byTooltip('New item'), findsOneWidget);
+    });
+
     testWidgets('new item menu includes New file option', (tester) async {
       final client = _mockClient([_file('a.txt')]);
       await tester.pumpWidget(
@@ -529,6 +549,28 @@ void main() {
             client: client,
             alias: 'docs',
             role: 'owner',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.longPress(find.text('a.txt'));
+      await tester.pump();
+
+      expect(find.byTooltip('Delete selected'), findsWidgets);
+    });
+
+    testWidgets('owner sees delete action while in multi-select',
+        (tester) async {
+      final client = _mockClient([_file('a.txt'), _file('b.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'Owner',
             watcherFactory: null,
           ),
         ),

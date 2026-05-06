@@ -94,13 +94,22 @@ class TokenStore {
       )
       .toList();
 
+  void syncAllRoles(Role role) {
+    for (final session in _sessions.values) {
+      session.role = role;
+    }
+    for (final device in _devices.values) {
+      device.role = role;
+    }
+  }
+
   String _hash(String token) =>
       sha256.convert(utf8.encode(token)).toString();
 }
 
 class _TokenRecord {
   final String deviceId;
-  final Role role;
+  Role role;
   final DateTime expiresAt;
   _TokenRecord({
     required this.deviceId,
@@ -113,7 +122,7 @@ class _DeviceRecord {
   final String deviceId;
   final String deviceName;
   final String publicKeyFingerprint;
-  final Role role;
+  Role role;
   _DeviceRecord({
     required this.deviceId,
     required this.deviceName,

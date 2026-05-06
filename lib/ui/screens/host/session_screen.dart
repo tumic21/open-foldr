@@ -108,6 +108,12 @@ class _SessionScreenState extends State<SessionScreen> {
     });
   }
 
+  void _syncPairedDeviceRoles() {
+    final role = widget.server.roots.highestMinimumRole;
+    widget.server.tokens.syncAllRoles(role);
+    debugPrint('[SessionScreen] synced paired device roles to ${role.name}');
+  }
+
   @override
   void dispose() {
     _expiryTimer?.cancel();
@@ -134,6 +140,7 @@ class _SessionScreenState extends State<SessionScreen> {
           minimumRole: Role.viewer,
         ),
       );
+      _syncPairedDeviceRoles();
       await SessionStore.saveRoots(widget.server.roots.all);
       if (!mounted) return;
       setState(() {});
@@ -147,6 +154,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _removeSharedFolder(String alias) {
     widget.server.roots.unregister(alias);
+    _syncPairedDeviceRoles();
     SessionStore.saveRoots(widget.server.roots.all);
     setState(() {});
   }
@@ -160,6 +168,7 @@ class _SessionScreenState extends State<SessionScreen> {
         minimumRole: role,
       ),
     );
+    _syncPairedDeviceRoles();
     SessionStore.saveRoots(widget.server.roots.all);
     setState(() {});
   }

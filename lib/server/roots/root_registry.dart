@@ -1,4 +1,5 @@
 import '../../models/shared_root.dart';
+import '../../models/role.dart';
 import '../path_guard.dart';
 
 /// Holds all root aliases for the active session.
@@ -30,4 +31,7 @@ class RootRegistry {
   PathGuard? guard(String alias) => _guards[alias];
   List<SharedRoot> get all => _roots.values.toList();
   bool get isEmpty => _roots.isEmpty;
+
+  Role get highestMinimumRole =>
+      Role.highest(_roots.values.map((root) => root.minimumRole));
 }

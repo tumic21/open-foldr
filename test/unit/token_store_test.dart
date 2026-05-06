@@ -61,5 +61,22 @@ void main() {
       );
       expect(store.validate(''), isNull);
     });
+
+    test('syncAllRoles updates active session and device roles', () {
+      final issued = store.issue(
+        deviceId: 'dev4',
+        deviceName: 'Tablet',
+        publicKeyFingerprint: 'fp4',
+        role: Role.viewer,
+      );
+
+      expect(store.validate(issued.sessionToken), Role.viewer);
+      expect(store.devices.single.role, Role.viewer);
+
+      store.syncAllRoles(Role.owner);
+
+      expect(store.validate(issued.sessionToken), Role.owner);
+      expect(store.devices.single.role, Role.owner);
+    });
   });
 }

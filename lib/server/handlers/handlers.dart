@@ -33,7 +33,7 @@ Handler healthHandler() {
 /// Pending pair requests waiting for completion.
 final Map<String, PairRequest> _pendingRequests = {};
 
-Handler pairRequestHandler(PairingManager pairing) {
+Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
   return (Request request) async {
     final ip = _clientIp(request);
     if (pairing.isLockedOut(ip)) {
@@ -61,13 +61,19 @@ Handler pairRequestHandler(PairingManager pairing) {
       return _error(status, err, 'Pairing validation failed: $err');
     }
 
+    final defaultRole = roots.highestMinimumRole;
     final requestId = _uuid.v4();
     _pendingRequests[requestId] = PairRequest(
       id: requestId,
       deviceName: deviceName,
       fingerprint: fingerprint,
       ip: ip,
+      role: defaultRole,
     )..approved = true;
+
+    print(
+      '[pairing] request-approved requestId=$requestId device=$deviceName role=${defaultRole.name}',
+    );
 
     return Response.ok(
       jsonEncode({'pairRequestId': requestId, 'approval': 'auto'}),
@@ -100,6 +106,10 @@ Handler pairCompleteHandler(TokenStore tokens) {
       deviceName: pending.deviceName,
       publicKeyFingerprint: pending.fingerprint,
       role: pending.role,
+    );
+
+    print(
+      '[pairing] session-issued requestId=$requestId device=${pending.deviceName} role=${pending.role.name}',
     );
 
     // Consume request after successful completion.
@@ -365,13 +375,14 @@ class PairRequest {
   final String fingerprint;
   final String ip;
   bool approved = false;
-  Role role = Role.viewer;
+  Role role;
 
   PairRequest({
     required this.id,
     required this.deviceName,
     required this.fingerprint,
     required this.ip,
+    this.role = Role.viewer,
   });
 }
 
