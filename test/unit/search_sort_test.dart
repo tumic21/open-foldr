@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -297,6 +298,57 @@ void main() {
       expect(find.text('alpha.txt'), findsOneWidget);
       expect(find.text('beta.txt'), findsNothing);
       expect(find.text('gamma.dart'), findsNothing);
+    });
+
+    testWidgets('backspace edits the active search query', (tester) async {
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('alpha.txt')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+      await tester.pump();
+
+      expect(find.text('alph'), findsOneWidget);
+      expect(find.text('alpha'), findsNothing);
+    });
+
+    testWidgets('delete edits the active search query', (tester) async {
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: _mockClient([_file('alpha.txt')]),
+        alias: 'docs',
+        role: 'viewer',
+        watcherFactory: null,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'alpha');
+      await tester.pump();
+
+      final editable = tester.state<EditableTextState>(find.byType(EditableText));
+      editable.updateEditingValue(const TextEditingValue(
+        text: 'alpha',
+        selection: TextSelection.collapsed(offset: 0),
+      ));
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pump();
+
+      expect(find.text('lpha'), findsOneWidget);
+      expect(find.text('alpha'), findsNothing);
     });
 
     testWidgets('empty search result shows "No results" message',

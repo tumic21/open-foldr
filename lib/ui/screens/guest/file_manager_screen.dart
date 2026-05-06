@@ -731,6 +731,30 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final shortcuts = <ShortcutActivator, Intent>{
+      const SingleActivator(LogicalKeyboardKey.keyC, control: true):
+        const _CopyIntent(),
+      const SingleActivator(LogicalKeyboardKey.keyX, control: true):
+        const _CutIntent(),
+      const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+        const _PasteIntent(),
+      const SingleActivator(LogicalKeyboardKey.keyA, control: true):
+        const _SelectAllIntent(),
+      const SingleActivator(LogicalKeyboardKey.f2): const _RenameIntent(),
+      const SingleActivator(LogicalKeyboardKey.keyN, control: true):
+        const _NewFolderIntent(),
+      const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+        const _NavUpIntent(),
+      const SingleActivator(LogicalKeyboardKey.enter): const _OpenIntent(),
+    };
+    if (!_searchActive) {
+      // Keep text-editing keys free for the search field when search is open.
+      shortcuts[const SingleActivator(LogicalKeyboardKey.delete)] =
+        const _DeleteIntent();
+      shortcuts[const SingleActivator(LogicalKeyboardKey.backspace)] =
+        const _NavUpIntent();
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -740,28 +764,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         if (!goBack) await _load();
       },
       child: Shortcuts(
-        shortcuts: {
-          const SingleActivator(LogicalKeyboardKey.keyC, control: true):
-              const _CopyIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyX, control: true):
-              const _CutIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true):
-              const _PasteIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyA, control: true):
-              const _SelectAllIntent(),
-          const SingleActivator(LogicalKeyboardKey.delete):
-              const _DeleteIntent(),
-          const SingleActivator(LogicalKeyboardKey.f2):
-              const _RenameIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyN, control: true):
-              const _NewFolderIntent(),
-          const SingleActivator(LogicalKeyboardKey.backspace):
-              const _NavUpIntent(),
-          const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
-              const _NavUpIntent(),
-          const SingleActivator(LogicalKeyboardKey.enter):
-              const _OpenIntent(),
-        },
+        shortcuts: shortcuts,
         child: Actions(
           actions: {
             _CopyIntent: CallbackAction<_CopyIntent>(
