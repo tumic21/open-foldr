@@ -52,10 +52,12 @@ class FileListTile extends StatelessWidget {
               value: selected,
               onChanged: onTap == null ? null : (_) => onTap!(),
             )
-          : Icon(
-              entry.isDirectory ? Icons.folder : fileTypeIcon(entry.name),
-              color: entry.isDirectory ? theme.colorScheme.primary : null,
-            ),
+          : (() {
+              final fd = entry.isDirectory
+                  ? folderIconData
+                  : fileTypeIcon(entry.name);
+              return Icon(fd.icon, color: fd.color);
+            }()),
       title: Text(entry.name, overflow: TextOverflow.ellipsis),
       subtitle: entry.isDirectory ? null : Text(_subtitle()),
       trailing: IconButton(

@@ -70,13 +70,12 @@ class FileGridTile extends StatelessWidget {
                       : null,
                 ),
               ),
-              Icon(
-                entry.isDirectory ? Icons.folder : fileTypeIcon(entry.name),
-                size: 48,
-                color: entry.isDirectory
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
+              (() {
+                final fd = entry.isDirectory
+                    ? folderIconData
+                    : fileTypeIcon(entry.name);
+                return Icon(fd.icon, size: 48, color: fd.color);
+              }()),
               const SizedBox(height: 6),
               Text(
                 entry.name,

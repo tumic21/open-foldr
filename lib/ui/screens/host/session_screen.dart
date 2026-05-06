@@ -329,17 +329,31 @@ class _SessionScreenState extends State<SessionScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildRoleTooltip(
-                      DropdownButton<Role>(
-                        value: r.minimumRole,
-                        items: Role.values
+                      DropdownMenu<Role>(
+                        initialSelection: r.minimumRole,
+                        width: 130,
+                        inputDecorationTheme: InputDecorationTheme(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                        ),
+                        textStyle: Theme.of(context).textTheme.bodyMedium,
+                        dropdownMenuEntries: Role.values
                             .map(
-                              (role) => DropdownMenuItem(
+                              (role) => DropdownMenuEntry(
                                 value: role,
-                                child: Text(role.displayName),
+                                label: role.displayName,
                               ),
                             )
                             .toList(),
-                        onChanged: (role) {
+                        onSelected: (role) {
                           if (role == null) return;
                           _changeMinimumRole(r, role);
                         },
