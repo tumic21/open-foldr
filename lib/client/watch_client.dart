@@ -85,10 +85,16 @@ class WatchClient {
     final uri = buildWsUri();
 
     try {
-      _channel = WebSocketChannel.connect(
+      final channel = WebSocketChannel.connect(
         uri,
         protocols: const [],
       );
+      _channel = channel;
+
+      unawaited(channel.ready.catchError((_) {
+        if (_disposed || !identical(_channel, channel)) return;
+        _scheduleReconnect();
+      }));
 
       // Authenticate via sub-protocol is not used; instead pass the token as
       // a query param isn't ideal.  shelf_web_socket supports header-based
@@ -100,7 +106,7 @@ class WatchClient {
       // Reconnect after opening: send a lightweight ping to authenticate.
       // The server will close with 4401 if token is invalid.
 
-      _sub = _channel!.stream.listen(
+      _sub = channel.stream.listen(
         (data) {
           _attempt = 0; // reset backoff on successful message
           if (data is String) {

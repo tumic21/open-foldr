@@ -276,7 +276,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   bool get _canWrite =>
       widget.role == 'editor' || widget.role == 'owner';
   bool get _canDelete => widget.role == 'owner';
-    bool get _isDesktop =>
+  bool get _isDesktop =>
       Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
   @override
@@ -552,6 +552,66 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   // ─── Create folder ─────────────────────────────────────────────────────────
+
+  Future<void> _createFile() async {
+    final name = await _showCreateFileDialog();
+    if (name == null || name.isEmpty) return;
+    final path =
+        '${_state.currentPath == '/' ? '' : _state.currentPath}/$name';
+    final result =
+        await widget.client.uploadFile(widget.alias, path, Uint8List(0));
+    if (!mounted) return;
+    if (result.isOk) {
+      await _load();
+    } else {
+      _showError(result.errorMessage);
+    }
+  }
+
+  Future<String?> _showCreateFileDialog() {
+    final controller = TextEditingController();
+
+    bool isValid(String v) =>
+        v.isNotEmpty && !v.contains('/') && v != '..' && v != '.';
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('New File'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'File name',
+              border: const OutlineInputBorder(),
+              errorText:
+                  controller.text.isNotEmpty && !isValid(controller.text)
+                      ? 'Name cannot contain / or be . or ..'
+                      : null,
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (v) {
+              final name = v.trim();
+              if (isValid(name)) Navigator.pop(ctx, name);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isValid(controller.text.trim())
+                  ? () => Navigator.pop(ctx, controller.text.trim())
+                  : null,
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _createFolder() async {
     final name = await showCreateFolderDialog(context);
@@ -931,6 +991,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             tooltip: 'Select all',
             onPressed: _state.selectAll,
           ),
+          if (_canDelete)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              tooltip: 'Delete selected',
+              onPressed: _deleteSelected,
+            ),
         ],
       );
     }
@@ -970,6 +1036,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             sortOrder: _state.sortOrder,
             onChanged: _state.setSortBy,
           ),
+          if (_canWrite)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'New item',
+              onPressed: _showNewItemMenu,
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
@@ -1289,6 +1361,14 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: const Text('New file'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _createFile();
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.upload_file),
               title: const Text('Upload file'),

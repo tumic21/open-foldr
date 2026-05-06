@@ -14,6 +14,22 @@ Middleware bearerAuthMiddleware(TokenStore store) {
       // Auth endpoints are public.
       if (request.url.path.startsWith('v1/auth/')) return inner(request);
 
+      final watchToken = request.url.queryParameters['token'];
+      final isWatchRequest =
+          request.method == 'GET' && request.url.path.endsWith('/watch');
+      if (isWatchRequest && watchToken != null && watchToken.isNotEmpty) {
+        final role = store.validate(watchToken);
+        if (role == null) {
+          return _unauthorized('Token invalid or expired');
+        }
+
+        final updated = request.change(context: {
+          ...request.context,
+          _roleKey: role,
+        });
+        return inner(updated);
+      }
+
       final header = request.headers['authorization'] ?? '';
       if (!header.startsWith('Bearer ')) {
         return _unauthorized('Missing or invalid Authorization header');

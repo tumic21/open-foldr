@@ -378,6 +378,66 @@ void main() {
 
       expect(find.byType(FloatingActionButton), findsNothing);
     });
+
+    testWidgets('AppBar new item action is visible for editor role',
+        (tester) async {
+      final client = _mockClient([_file('a.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'editor',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byTooltip('New item'), findsOneWidget);
+    });
+
+    testWidgets('AppBar new item action is hidden for viewer role',
+        (tester) async {
+      final client = _mockClient([_file('a.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'viewer',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byTooltip('New item'), findsNothing);
+    });
+
+    testWidgets('new item menu includes New file option', (tester) async {
+      final client = _mockClient([_file('a.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'editor',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.byTooltip('New item'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('New file'), findsOneWidget);
+      expect(find.text('New folder'), findsOneWidget);
+    });
   });
 
   // ─── FileManagerScreen — AppBar in multi-select mode ─────────────────────
@@ -458,6 +518,28 @@ void main() {
       await tester.pump();
 
       expect(find.text('3 selected'), findsOneWidget);
+    });
+
+    testWidgets('owner sees delete action in multi-select AppBar',
+        (tester) async {
+      final client = _mockClient([_file('a.txt'), _file('b.txt')]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'owner',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.longPress(find.text('a.txt'));
+      await tester.pump();
+
+      expect(find.byTooltip('Delete selected'), findsWidgets);
     });
   });
 
