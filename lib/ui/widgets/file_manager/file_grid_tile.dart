@@ -8,6 +8,7 @@ class FileGridTile extends StatelessWidget {
   final bool selected;
   final bool multiSelectMode;
   final VoidCallback? onTap;
+  final VoidCallback? onDoubleTap;
   final VoidCallback? onLongPress;
   final List<String>? draggablePaths;
   final VoidCallback? onDragStarted;
@@ -20,6 +21,7 @@ class FileGridTile extends StatelessWidget {
     this.selected = false,
     this.multiSelectMode = false,
     this.onTap,
+    this.onDoubleTap,
     this.onLongPress,
     this.draggablePaths,
     this.onDragStarted,
@@ -32,6 +34,7 @@ class FileGridTile extends StatelessWidget {
     final theme = Theme.of(context);
     Widget tile = GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       onLongPress: onLongPress,
       child: Card(
         color: selected ? theme.colorScheme.primaryContainer : null,

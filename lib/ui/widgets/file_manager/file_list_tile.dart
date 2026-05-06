@@ -8,6 +8,7 @@ class FileListTile extends StatelessWidget {
   final bool selected;
   final bool multiSelectMode;
   final VoidCallback? onTap;
+  final VoidCallback? onDoubleTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onMoreTap;
   final List<String>? draggablePaths;
@@ -21,6 +22,7 @@ class FileListTile extends StatelessWidget {
     this.selected = false,
     this.multiSelectMode = false,
     this.onTap,
+    this.onDoubleTap,
     this.onLongPress,
     this.onMoreTap,
     this.draggablePaths,
@@ -32,6 +34,10 @@ class FileListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // When double-tap is provided (desktop mode), remove onTap/onLongPress from
+    // ListTile and wrap with a GestureDetector so all three gestures are
+    // dispatched without Flutter's built-in 300 ms tap-delay.
+    final bool useGesture = onDoubleTap != null;
     Widget tile = ListTile(
       selected: selected,
       leading: multiSelectMode
@@ -50,9 +56,17 @@ class FileListTile extends StatelessWidget {
         onPressed: onMoreTap,
         tooltip: 'More options',
       ),
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onTap: useGesture ? null : onTap,
+      onLongPress: useGesture ? null : onLongPress,
     );
+    if (useGesture) {
+      tile = GestureDetector(
+        onTap: onTap,
+        onDoubleTap: onDoubleTap,
+        onLongPress: onLongPress,
+        child: tile,
+      );
+    }
 
     if (entry.isDirectory && onDropPaths != null) {
       final innerTile = tile;

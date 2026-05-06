@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' show min, max;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -310,6 +311,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   final Map<String, _DownloadControlState> _downloadControls = {};
   int _roleRefreshFailures = 0;
   static const _maxRoleRefreshFailures = 3;
+
+  /// Anchor path for Shift+click range selection on desktop.
+  String? _lastSelectedPath;
 
   String get _normalizedRole => _sessionRole.trim().toLowerCase();
 
@@ -1380,8 +1384,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               onDropPaths: entry.isDirectory && _isDesktop && _canWrite
                   ? (paths) => _moveDraggedPaths(paths, entry.path)
                   : null,
-              onTap: () => _handleTap(entry),
-              onLongPress: () => _state.toggleSelect(entry.path),
+              onTap: _isDesktop
+                  ? () => _handleDesktopClick(entry)
+                  : () => _handleTap(entry),
+              onDoubleTap: _isDesktop ? () => _openEntry(entry) : null,
+              onLongPress: _isDesktop
+                  ? null
+                  : () => _state.toggleSelect(entry.path),
             );
           },
         ),
@@ -1410,8 +1419,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             onDropPaths: entry.isDirectory && _isDesktop && _canWrite
                 ? (paths) => _moveDraggedPaths(paths, entry.path)
                 : null,
-            onTap: () => _handleTap(entry),
-            onLongPress: () => _state.toggleSelect(entry.path),
+            onTap: _isDesktop
+                ? () => _handleDesktopClick(entry)
+                : () => _handleTap(entry),
+            onDoubleTap: _isDesktop ? () => _openEntry(entry) : null,
+            onLongPress: _isDesktop
+                ? null
+                : () => _state.toggleSelect(entry.path),
             onMoreTap: () => _showFileActions(entry),
           );
         },
@@ -1424,13 +1438,54 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       _state.toggleSelect(entry.path);
       return;
     }
+    _openEntry(entry);
+  }
+
+  /// Navigates into a directory or opens a file. Used as the double-click
+  /// action on desktop and the single-tap action on mobile.
+  void _openEntry(FileEntry entry) {
     if (entry.isDirectory) {
       _state.pushPath(entry.path);
       _state.clearSelection();
+      _lastSelectedPath = null;
       if (_searchActive) _closeSearch();
       _load();
     } else {
       _openFile(entry);
+    }
+  }
+
+  /// Desktop single-click: select with optional Ctrl / Shift modifiers.
+  void _handleDesktopClick(FileEntry entry) {
+    final ctrl =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+
+    if (shift && _lastSelectedPath != null) {
+      // Range-select between anchor and clicked item.
+      final visible = _state.filteredEntries;
+      final anchorIdx = visible.indexWhere((e) => e.path == _lastSelectedPath);
+      final clickIdx = visible.indexWhere((e) => e.path == entry.path);
+      if (anchorIdx >= 0 && clickIdx >= 0) {
+        final lo = min(anchorIdx, clickIdx);
+        final hi = max(anchorIdx, clickIdx);
+        if (!ctrl) _state.clearSelection();
+        for (var i = lo; i <= hi; i++) {
+          if (!_state.selectedPaths.contains(visible[i].path)) {
+            _state.toggleSelect(visible[i].path);
+          }
+        }
+      }
+    } else if (ctrl) {
+      // Toggle this item without disturbing others.
+      _state.toggleSelect(entry.path);
+      _lastSelectedPath = entry.path;
+    } else {
+      // Plain click: select only this item.
+      _state.clearSelection();
+      _state.toggleSelect(entry.path);
+      _lastSelectedPath = entry.path;
     }
   }
 

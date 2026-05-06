@@ -384,6 +384,7 @@ void main() {
   });
 
   group('FileManagerScreen — open file routing', () {
+    // On desktop (Linux), files open on double-tap; single tap selects.
     testWidgets('routes text files as text', (tester) async {
       String? openedKind;
       await tester.pumpWidget(_wrap(FileManagerScreen(
@@ -397,7 +398,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('readme.txt'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('readme.txt'));
+      await tester.pump(const Duration(milliseconds: 50));
 
       expect(openedKind, 'text');
     });
@@ -415,7 +418,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('photo.jpg'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('photo.jpg'));
+      await tester.pump(const Duration(milliseconds: 50));
 
       expect(openedKind, 'image');
     });
@@ -433,7 +438,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('guide.pdf'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('guide.pdf'));
+      await tester.pump(const Duration(milliseconds: 50));
 
       expect(openedKind, 'pdf');
     });
@@ -451,12 +458,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('archive.bin'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('archive.bin'));
+      await tester.pump(const Duration(milliseconds: 50));
 
       expect(openedKind, 'download');
     });
 
-    testWidgets('unknown file click asks confirmation before download',
+    testWidgets('unknown file double-click asks confirmation before download',
         (tester) async {
       await tester.pumpWidget(_wrap(FileManagerScreen(
         client: _mockClient([_file('archive.bin')]),
@@ -468,7 +477,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('archive.bin'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('archive.bin'));
+      await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('Download file?'), findsOneWidget);
       expect(find.text('Download'), findsOneWidget);
