@@ -79,7 +79,7 @@ class OpenFoldrServer {
       ..get('/v1/roots/<alias>/watch', watchRouteHandler(roots, tokens));
 
     final handler = const Pipeline()
-        .addMiddleware(logRequests())
+        .addMiddleware(_filteredLogRequests())
         .addMiddleware(bearerAuthMiddleware(tokens))
         .addHandler(router.call);
 
@@ -94,4 +94,18 @@ class OpenFoldrServer {
     await _server?.close(force: true);
     _server = null;
   }
+}
+
+/// Like [logRequests] but silences high-frequency polling paths
+/// (`/v1/session` and `/v1/health`) that would otherwise flood the log.
+Middleware _filteredLogRequests() {
+  const _silenced = {'/v1/session', '/v1/health'};
+  final _inner = logRequests();
+  return (Handler next) {
+    final logged = _inner(next);
+    return (Request request) {
+      if (_silenced.contains('/${request.url.path}')) return next(request);
+      return logged(request);
+    };
+  };
 }
