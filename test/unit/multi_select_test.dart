@@ -583,6 +583,58 @@ void main() {
 
       expect(find.byTooltip('Delete selected'), findsWidgets);
     });
+
+    testWidgets('role refresh hides delete after downgrade', (tester) async {
+      var sessionRole = 'viewer';
+      final client = FileClient(
+        baseUrl: 'http://localhost:7432/v1',
+        sessionToken: 'tok',
+        httpClient: MockClient((req) async {
+          if (req.url.path.endsWith('/session')) {
+            return http.Response(
+              '{"role":"$sessionRole"}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (req.url.path.contains('/list') ||
+              req.url.queryParameters.containsKey('path')) {
+            return http.Response(
+              '{"entries":${_encodeEntries([_file('a.txt'), _file('b.txt')])}}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            '{"error":{"code":"NOT_FOUND","message":"x"}}',
+            404,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FileManagerScreen(
+            client: client,
+            alias: 'docs',
+            role: 'owner',
+            watcherFactory: null,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      sessionRole = 'viewer';
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      await tester.longPress(find.text('a.txt'));
+      await tester.pump();
+
+      expect(find.byTooltip('Delete selected'), findsNothing);
+    });
   });
 
   // ─── FileManagerScreen — bottom bar ───────────────────────────────────────

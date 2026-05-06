@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -263,22 +264,24 @@ class FileManagerScreen extends StatefulWidget {
 
 class _FileManagerScreenState extends State<FileManagerScreen> {
   static const _downloadFolderPrefKey = 'guest.downloadFolder';
+  static const _roleRefreshInterval = Duration(seconds: 2);
 
   late final FileManagerState _state;
   String? _downloadFolder;
+  late String _sessionRole;
 
   bool _searchActive = false;
   final TextEditingController _searchController = TextEditingController();
-    String? _lastUiLogSignature;
+  Timer? _roleRefreshTimer;
 
   WatchClient? _watcher;
   final Map<String, UploadProgressItem> _uploadProgress = {};
 
-    String get _normalizedRole => widget.role.trim().toLowerCase();
+  String get _normalizedRole => _sessionRole.trim().toLowerCase();
 
   bool get _canWrite =>
       _normalizedRole == 'editor' || _normalizedRole == 'owner';
-    bool get _canDelete => _normalizedRole == 'owner';
+  bool get _canDelete => _normalizedRole == 'owner';
   bool get _isDesktop =>
       Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
@@ -286,8 +289,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   void initState() {
     super.initState();
     _state = FileManagerState(initialPath: widget.initialPath);
+    _sessionRole = widget.role;
     _state.addListener(_onStateChanged);
-    _logUiState('init', force: true);
+    _startRoleRefresh();
     _loadDownloadFolder();
     _load();
   }
@@ -297,22 +301,33 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _state.removeListener(_onStateChanged);
     _state.dispose();
     _searchController.dispose();
+    _roleRefreshTimer?.cancel();
     _watcher?.dispose();
     super.dispose();
   }
 
   void _onStateChanged() {
-    _logUiState('state-change');
     if (mounted) setState(() {});
   }
 
-  void _logUiState(String source, {bool force = false}) {
-    final signature = '$source|raw=${widget.role}|normalized=$_normalizedRole|'
-        'write=$_canWrite|delete=$_canDelete|selected=${_state.selectedPaths.length}|'
-        'multi=${_state.multiSelectMode}|search=$_searchActive|path=${_state.currentPath}';
-    if (!force && signature == _lastUiLogSignature) return;
-    _lastUiLogSignature = signature;
-    debugPrint('[FileManagerScreen] $signature');
+  void _startRoleRefresh() {
+    _roleRefreshTimer?.cancel();
+    _roleRefreshTimer = Timer.periodic(
+      _roleRefreshInterval,
+      (_) => _refreshSessionRole(),
+    );
+  }
+
+  Future<void> _refreshSessionRole() async {
+    final result = await widget.client.getSessionRole();
+    if (!mounted || result.isErr) return;
+
+    final nextRole = result.unwrap;
+    if (nextRole == _sessionRole) return;
+
+    setState(() {
+      _sessionRole = nextRole;
+    });
   }
 
   // ─── Settings ─────────────────────────────────────────────────────────────
@@ -359,21 +374,14 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   // ─── Load directory ────────────────────────────────────────────────────────
 
   Future<void> _load() async {
-    _logUiState('load-start', force: true);
     _state.setLoading();
     final result =
         await widget.client.listEntries(widget.alias, _state.currentPath);
     if (!mounted) return;
     if (result.isOk) {
       _state.setEntries(result.unwrap);
-      debugPrint(
-        '[FileManagerScreen] load-success alias=${widget.alias} path=${_state.currentPath} count=${result.unwrap.length}',
-      );
     } else {
       _state.setError(result.errorMessage);
-      debugPrint(
-        '[FileManagerScreen] load-error alias=${widget.alias} path=${_state.currentPath} error=${result.errorMessage}',
-      );
     }
     _startWatcher();
   }
@@ -387,12 +395,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final newWatcher = widget.watcherFactory?.call(_state.currentPath);
     if (newWatcher == null) return;
     _watcher = newWatcher;
-    debugPrint(
-      '[FileManagerScreen] watch-start alias=${widget.alias} path=${_state.currentPath} role=$_normalizedRole',
-    );
     _watcher!.events.listen((event) {
       // On any filesystem change, reload the current directory listing.
-      debugPrint('[FileManagerScreen] watch-event $event');
       if (mounted) _load();
     });
     _watcher!.connect();
@@ -803,14 +807,12 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   void _openSearch() {
-    _logUiState('search-open', force: true);
     setState(() => _searchActive = true);
   }
 
   void _closeSearch() {
     _searchController.clear();
     _state.clearSearch();
-    _logUiState('search-close', force: true);
     setState(() => _searchActive = false);
   }
 
@@ -868,7 +870,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             ),
             _CutIntent: CallbackAction<_CutIntent>(
               onInvoke: (_) {
-                if (_state.hasSelection && !_searchActive) {
+                if (_state.hasSelection && _canWrite && !_searchActive) {
                   _state.cutSelected(widget.alias);
                   _state.clearSelection();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -880,7 +882,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             ),
             _PasteIntent: CallbackAction<_PasteIntent>(
               onInvoke: (_) {
-                if (_state.clipboard != null && !_searchActive) _paste();
+                if (_state.clipboard != null && _canWrite && !_searchActive) {
+                  _paste();
+                }
                 return null;
               },
             ),
@@ -1322,15 +1326,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             IconButton(
               icon: const Icon(Icons.cut),
               tooltip: 'Cut',
-              onPressed: () {
-                _state.cutSelected(widget.alias);
-                _state.clearSelection();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cut to clipboard')),
-                );
-              },
+              onPressed: _canWrite
+                  ? () {
+                      _state.cutSelected(widget.alias);
+                      _state.clearSelection();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Cut to clipboard')),
+                      );
+                    }
+                  : null,
             ),
-            if (_state.clipboard != null)
+            if (_state.clipboard != null && _canWrite)
               IconButton(
                 icon: const Icon(Icons.paste),
                 tooltip: 'Paste',

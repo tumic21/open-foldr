@@ -71,10 +71,6 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       final pairData = result.unwrap;
       _client = pairData.client;
 
-      debugPrint(
-        '[ExplorerScreen] pair-success host=${widget.hostAddress}:${widget.port} role=${pairData.role}',
-      );
-
       setState(() {
         _role = pairData.role;
       });
@@ -94,11 +90,12 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   }
 
   Future<void> _loadRoots() async {
+    final roleResult = await _client!.getSessionRole();
+    if (roleResult.isOk) {
+      _role = roleResult.unwrap;
+    }
     final result = await _client!.listRoots();
     if (result.isOk) {
-      debugPrint(
-        '[ExplorerScreen] roots-loaded sessionRole=$_role roots=${result.unwrap.map((r) => '${r['alias']}:${r['minimumRole']}').join(',')}',
-      );
       setState(() {
         _roots = result.unwrap;
         _loading = false;

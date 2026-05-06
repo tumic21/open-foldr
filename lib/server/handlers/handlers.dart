@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../pairing/pairing_manager.dart';
 import '../pairing/token_store.dart';
 import '../roots/root_registry.dart';
+import '../auth/auth_middleware.dart';
 import '../../core/result.dart';
 import '../../core/host_identity.dart';
 import '../activity/activity_log.dart';
@@ -71,10 +72,6 @@ Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
       role: defaultRole,
     )..approved = true;
 
-    print(
-      '[pairing] request-approved requestId=$requestId device=$deviceName role=${defaultRole.name}',
-    );
-
     return Response.ok(
       jsonEncode({'pairRequestId': requestId, 'approval': 'auto'}),
       headers: _json,
@@ -106,10 +103,6 @@ Handler pairCompleteHandler(TokenStore tokens) {
       deviceName: pending.deviceName,
       publicKeyFingerprint: pending.fingerprint,
       role: pending.role,
-    );
-
-    print(
-      '[pairing] session-issued requestId=$requestId device=${pending.deviceName} role=${pending.role.name}',
     );
 
     // Consume request after successful completion.
@@ -147,6 +140,16 @@ Handler tokenRefreshHandler(TokenStore tokens) {
         'sessionToken': result.sessionToken,
         'expiresAt': result.expiresAt.toUtc().toIso8601String(),
       }),
+      headers: _json,
+    );
+  };
+}
+
+Handler sessionInfoHandler() {
+  return (Request request) {
+    final role = roleOf(request);
+    return Response.ok(
+      jsonEncode({'role': role.name}),
       headers: _json,
     );
   };

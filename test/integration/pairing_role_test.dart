@@ -59,4 +59,44 @@ void main() {
     final body = jsonDecode(completeRes.body) as Map<String, dynamic>;
     expect(body['role'], 'owner');
   });
+
+  test('session endpoint reflects role changes during an active session',
+      () async {
+    final secret = server.pairing.generateSecret();
+
+    final requestRes = await http.post(
+      Uri.parse('$base/auth/pair/request'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({
+        'deviceName': 'LiveRoleClient',
+        'devicePublicKey': '',
+        'pairingSecret': secret,
+      }),
+    );
+    expect(requestRes.statusCode, 200);
+
+    final requestId =
+        (jsonDecode(requestRes.body) as Map<String, dynamic>)['pairRequestId']
+            as String;
+
+    final completeRes = await http.post(
+      Uri.parse('$base/auth/pair/complete'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'pairRequestId': requestId}),
+    );
+    expect(completeRes.statusCode, 200);
+    final sessionToken =
+        (jsonDecode(completeRes.body) as Map<String, dynamic>)['sessionToken']
+            as String;
+
+    server.tokens.syncAllRoles(Role.viewer);
+
+    final sessionRes = await http.get(
+      Uri.parse('$base/session'),
+      headers: {'authorization': 'Bearer $sessionToken'},
+    );
+    expect(sessionRes.statusCode, 200);
+    final sessionBody = jsonDecode(sessionRes.body) as Map<String, dynamic>;
+    expect(sessionBody['role'], 'viewer');
+  });
 }

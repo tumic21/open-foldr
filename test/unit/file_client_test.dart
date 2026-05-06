@@ -39,6 +39,22 @@ http.Response _error(String code, String message, [int status = 400]) =>
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 void main() {
+  group('FileClient.getSessionRole', () {
+    test('returns current session role on 200', () async {
+      final c = _client((_) async => _json(200, {'role': 'owner'}));
+      final result = await c.getSessionRole();
+      expect(result.isOk, isTrue);
+      expect(result.unwrap, 'owner');
+    });
+
+    test('returns Err on non-200', () async {
+      final c = _client((_) async => _error('FORBIDDEN', 'Denied', 403));
+      final result = await c.getSessionRole();
+      expect(result.isErr, isTrue);
+      expect(result.errorCode, 'FORBIDDEN');
+    });
+  });
+
   // ─── listRoots ─────────────────────────────────────────────────────────
 
   group('FileClient.listRoots', () {

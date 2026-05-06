@@ -83,6 +83,20 @@ class FileClient {
 
   // ─── Roots listing ───────────────────────────────────────────────────────
 
+  Future<Result<String>> getSessionRole() async {
+    final uri = Uri.parse('$baseUrl/session');
+    try {
+      final res = await _http.get(uri, headers: _authHeaders());
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        return Ok(body['role'] as String? ?? 'viewer');
+      }
+      return _errFromBody(res);
+    } catch (e) {
+      return Err('NETWORK_ERROR', e.toString());
+    }
+  }
+
   /// Lists the shared roots available on the host.
   Future<Result<List<Map<String, dynamic>>>> listRoots() async {
     final uri = Uri.parse('$baseUrl/roots');

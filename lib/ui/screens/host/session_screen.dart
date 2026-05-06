@@ -111,7 +111,6 @@ class _SessionScreenState extends State<SessionScreen> {
   void _syncPairedDeviceRoles() {
     final role = widget.server.roots.highestMinimumRole;
     widget.server.tokens.syncAllRoles(role);
-    debugPrint('[SessionScreen] synced paired device roles to ${role.name}');
   }
 
   @override
