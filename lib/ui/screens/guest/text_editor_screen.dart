@@ -122,6 +122,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   String? _versionToken;
   bool _isDirty = false;
   bool _darkTheme = true;
+  bool _themeInitialized = false;
   bool _readOnly = false;
   late _Lang _lang;
 
@@ -133,6 +134,14 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     _editingController = CodeLineEditingController.fromText('');
     _findController = CodeFindController(_editingController);
     _loadFile();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_themeInitialized) return;
+    _darkTheme = Theme.of(context).brightness == Brightness.dark;
+    _themeInitialized = true;
   }
 
   @override
@@ -330,10 +339,32 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         theme: _darkTheme ? atomOneDarkTheme : atomOneLightTheme,
       );
 
+  CodeEditorStyle _buildEditorStyle(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textColor = _darkTheme
+        ? const Color(0xffabb2bf)
+        : const Color(0xff24292e);
+    final backgroundColor = _darkTheme
+        ? const Color(0xff282c34)
+        : const Color(0xfffafafa);
+    return CodeEditorStyle(
+      codeTheme: _buildHighlightTheme(),
+      textColor: textColor,
+      hintTextColor: textColor.withValues(alpha: 0.65),
+      backgroundColor: backgroundColor,
+      selectionColor: scheme.primary.withValues(alpha: 0.28),
+      highlightColor: scheme.tertiary.withValues(alpha: 0.22),
+      cursorColor: scheme.primary,
+      cursorLineColor: scheme.outline.withValues(alpha: 0.35),
+      chunkIndicatorColor: scheme.outline.withValues(alpha: 0.6),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final editorStyle = _buildEditorStyle(context);
     return PopScope(
       canPop: !_isDirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -342,11 +373,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         if (ok && context.mounted) Navigator.pop(context);
       },
       child: Scaffold(
-        backgroundColor: _darkTheme
-            ? const Color(0xff282c34) // atom-one-dark bg
-            : const Color(0xfffafafa), // atom-one-light bg
+        backgroundColor: editorStyle.backgroundColor,
         appBar: _buildAppBar(),
-        body: _buildBody(),
+        body: _buildBody(editorStyle),
       ),
     );
   }
@@ -427,7 +456,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(CodeEditorStyle editorStyle) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -458,10 +487,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     return CodeEditor(
       controller: _editingController,
       scrollController: _scrollController,
-      findController: _findController,      readOnly: _readOnly,
-      style: CodeEditorStyle(
-        codeTheme: _buildHighlightTheme(),
-      ),
+      findController: _findController,
+      readOnly: _readOnly,
+      style: editorStyle,
       indicatorBuilder: (context, editingController, chunkController, notifier) {
         return Row(
           children: [

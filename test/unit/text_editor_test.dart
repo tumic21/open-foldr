@@ -82,6 +82,13 @@ FileClient _makeClient({
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
 
+Widget _wrapWithTheme(Widget child, ThemeMode mode) => MaterialApp(
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
+      themeMode: mode,
+      home: child,
+    );
+
 // ─── Unit tests: language detection ──────────────────────────────────────────
 
 // Since _detectLang is private, we test it indirectly via the screen routing
@@ -302,14 +309,14 @@ void main() {
   group('TextEditorScreen — theme toggle', () {
     testWidgets('light_mode icon shown in dark theme; toggles to dark_mode',
         (tester) async {
-      await tester.pumpWidget(_wrap(TextEditorScreen(
+      await tester.pumpWidget(_wrapWithTheme(TextEditorScreen(
         client: _makeClient(),
         alias: 'docs',
         remotePath: '/test.txt',
         fileName: 'test.txt',
         fileSize: 100,
         canWrite: false,
-      )));
+      ), ThemeMode.dark));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -319,6 +326,28 @@ void main() {
       await tester.pump();
 
       expect(find.byIcon(Icons.dark_mode), findsOneWidget);
+    });
+
+    testWidgets('dark theme uses readable editor text contrast',
+        (tester) async {
+      await tester.pumpWidget(_wrapWithTheme(TextEditorScreen(
+        client: _makeClient(),
+        alias: 'docs',
+        remotePath: '/test.txt',
+        fileName: 'test.txt',
+        fileSize: 100,
+        canWrite: false,
+      ), ThemeMode.dark));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final editor = tester.widget<CodeEditor>(find.byType(CodeEditor));
+      final textColor = editor.style?.textColor;
+      final backgroundColor = editor.style?.backgroundColor;
+
+      expect(textColor, isNotNull);
+      expect(backgroundColor, isNotNull);
+      expect(textColor!.computeLuminance(), greaterThan(backgroundColor!.computeLuminance()));
     });
   });
 
