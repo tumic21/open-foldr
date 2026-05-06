@@ -14,6 +14,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final _scanner = MdnsScanner();
   List<DiscoveredHost> _hosts = [];
   bool _scanning = false;
+  bool _keepScanning = true;
 
   // Manual connect fields
   final _ipController = TextEditingController();
@@ -30,6 +31,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   @override
   void dispose() {
+    _keepScanning = false;
     _ipController.dispose();
     _portController.dispose();
     _secretController.dispose();
@@ -37,21 +39,24 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   }
 
   Future<void> _scan() async {
-    setState(() {
-      _scanning = true;
-      _hosts = [];
-    });
-    final found = await _scanner.scan(
-      onUpdate: (hosts) {
-        if (!mounted) return;
-        setState(() => _hosts = hosts);
-      },
-    );
-    if (!mounted) return;
-    setState(() {
-      _hosts = found;
-      _scanning = false;
-    });
+    _keepScanning = true;
+    while (_keepScanning && mounted) {
+      setState(() {
+        _scanning = true;
+        if (_hosts.isEmpty) _hosts = [];
+      });
+      final found = await _scanner.scan(
+        onUpdate: (hosts) {
+          if (!mounted) return;
+          setState(() => _hosts = hosts);
+        },
+      );
+      if (!mounted) break;
+      setState(() => _hosts = found);
+      // Brief pause before next scan cycle so the UI can settle.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (mounted) setState(() => _scanning = false);
   }
 
   void _connectManual() {
@@ -66,6 +71,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       );
       return;
     }
+    _keepScanning = false;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -81,6 +87,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       builder: (_) => _PairingDialog(hostName: host.name),
     ).then((secret) {
       if (secret == null || secret.isEmpty) return;
+      _keepScanning = false;
       Navigator.push(
         context,
         MaterialPageRoute(

@@ -45,12 +45,21 @@ class TokenStore {
   }
 
   /// Validates a session token. Returns the [Role] if valid, null otherwise.
+  /// Also updates the last-seen timestamp for the owning device.
   Role? validate(String sessionToken) {
-    final record = _sessions[_hash(sessionToken)];
+    final hash = _hash(sessionToken);
+    final record = _sessions[hash];
     if (record == null) return null;
     if (DateTime.now().isAfter(record.expiresAt)) {
-      _sessions.remove(_hash(sessionToken));
+      _sessions.remove(hash);
       return null;
+    }
+    // Mark the owning device as recently active.
+    for (final d in _devices.values) {
+      if (d.deviceId == record.deviceId) {
+        d.lastSeenAt = DateTime.now();
+        break;
+      }
     }
     return record.role;
   }
@@ -94,6 +103,26 @@ class TokenStore {
       )
       .toList();
 
+  /// Returns devices that have been seen within [threshold].
+  /// Used to show "currently connected" devices on the host screen.
+  List<PairedDevice> connectedDevices({
+    Duration threshold = const Duration(seconds: 10),
+  }) {
+    final cutoff = DateTime.now().subtract(threshold);
+    return _devices.values
+        .where((r) => r.lastSeenAt != null && r.lastSeenAt!.isAfter(cutoff))
+        .map(
+          (r) => PairedDevice(
+            id: r.deviceId,
+            name: r.deviceName,
+            publicKeyFingerprint: r.publicKeyFingerprint,
+            role: r.role,
+            pairedAt: DateTime.now(),
+          ),
+        )
+        .toList();
+  }
+
   void syncAllRoles(Role role) {
     for (final session in _sessions.values) {
       session.role = role;
@@ -123,6 +152,7 @@ class _DeviceRecord {
   final String deviceName;
   final String publicKeyFingerprint;
   Role role;
+  DateTime? lastSeenAt;
   _DeviceRecord({
     required this.deviceId,
     required this.deviceName,

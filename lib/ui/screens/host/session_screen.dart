@@ -191,7 +191,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final devices = widget.server.tokens.devices;
+    final devices = widget.server.tokens.connectedDevices();
     final hostName = HostIdentity.name;
     final sharedRoots = widget.server.roots.all;
 
