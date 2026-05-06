@@ -38,9 +38,16 @@ class FileListTile extends StatelessWidget {
     // ListTile and wrap with a GestureDetector so all three gestures are
     // dispatched without Flutter's built-in 300 ms tap-delay.
     final bool useGesture = onDoubleTap != null;
+    // On desktop hide checkboxes; use a highlighted tile background instead.
+    final bool showCheckbox = multiSelectMode && !useGesture;
+    final Color? selectionColor = (selected && useGesture)
+        ? theme.colorScheme.primaryContainer.withAlpha(230)
+        : null;
     Widget tile = ListTile(
       selected: selected,
-      leading: multiSelectMode
+      tileColor: selectionColor,
+      selectedTileColor: selectionColor,
+      leading: showCheckbox
           ? Checkbox(
               value: selected,
               onChanged: onTap == null ? null : (_) => onTap!(),

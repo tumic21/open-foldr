@@ -32,12 +32,21 @@ class FileGridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // On desktop (onDoubleTap != null) hide the checkbox indicator and use a
+    // stronger card colour for selection contrast instead.
+    final bool useGesture = onDoubleTap != null;
+    final bool showCheckbox = multiSelectMode && !useGesture;
+    final Color? cardColor = selected
+        ? (useGesture
+            ? theme.colorScheme.primaryContainer.withAlpha(230)
+            : theme.colorScheme.primaryContainer)
+        : null;
     Widget tile = GestureDetector(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       onLongPress: onLongPress,
       child: Card(
-        color: selected ? theme.colorScheme.primaryContainer : null,
+        color: cardColor,
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -48,7 +57,7 @@ class FileGridTile extends StatelessWidget {
                 alignment: Alignment.topRight,
                 child: SizedBox(
                   height: 24,
-                  child: multiSelectMode
+                  child: showCheckbox
                       ? Icon(
                           selected
                               ? Icons.check_circle
