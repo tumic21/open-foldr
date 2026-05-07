@@ -64,6 +64,37 @@ class TokenStore {
     return record.role;
   }
 
+  /// Validates a session token and returns role + device identity.
+  ({Role role, String deviceId, String deviceName})? validateWithDevice(
+    String sessionToken,
+  ) {
+    final hash = _hash(sessionToken);
+    final record = _sessions[hash];
+    if (record == null) return null;
+    if (DateTime.now().isAfter(record.expiresAt)) {
+      _sessions.remove(hash);
+      return null;
+    }
+
+    for (final d in _devices.values) {
+      if (d.deviceId == record.deviceId) {
+        d.lastSeenAt = DateTime.now();
+        return (
+          role: record.role,
+          deviceId: d.deviceId,
+          deviceName: d.deviceName,
+        );
+      }
+    }
+
+    // Device record can be missing if revoked; still return role + id.
+    return (
+      role: record.role,
+      deviceId: record.deviceId,
+      deviceName: 'unknown',
+    );
+  }
+
   /// Refreshes a session using a device token.
   /// Returns null if the device token is invalid.
   ({String sessionToken, DateTime expiresAt})? refresh(String deviceToken) {
@@ -132,8 +163,7 @@ class TokenStore {
     }
   }
 
-  String _hash(String token) =>
-      sha256.convert(utf8.encode(token)).toString();
+  String _hash(String token) => sha256.convert(utf8.encode(token)).toString();
 }
 
 class _TokenRecord {

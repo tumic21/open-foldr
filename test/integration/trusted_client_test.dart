@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:open_foldr/core/trusted_client_store.dart';
 import 'package:open_foldr/models/role.dart';
 import 'package:open_foldr/server/server.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   late OpenFoldrServer server;
@@ -12,16 +11,16 @@ void main() {
   const base = 'http://127.0.0.1:$port/v1';
 
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
+    await TrustedClientStore.clear();
     server = OpenFoldrServer(port: port);
     await server.start();
   });
 
   tearDownAll(() => server.stop());
 
-  setUp(() {
+  setUp(() async {
     // Reset trusted store before each test.
-    SharedPreferences.setMockInitialValues({});
+    await TrustedClientStore.clear();
   });
 
   group('Trusted client auto-approve', () {

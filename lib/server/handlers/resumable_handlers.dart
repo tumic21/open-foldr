@@ -30,8 +30,8 @@ class _UploadSession {
     required this.targetPath,
     required this.tmpPath,
     required this.totalSize,
-  })  : bytesReceived = 0,
-        createdAt = DateTime.now().toUtc();
+  }) : bytesReceived = 0,
+       createdAt = DateTime.now().toUtc();
 }
 
 /// In-memory map of active upload sessions. Key = uploadId.
@@ -93,10 +93,7 @@ Handler uploadInitHandler(RootRegistry registry) {
 
     if (existing != null) {
       return Response.ok(
-        jsonEncode({
-          'uploadId': existing.id,
-          'offset': existing.bytesReceived,
-        }),
+        jsonEncode({'uploadId': existing.id, 'offset': existing.bytesReceived}),
         headers: _json,
       );
     }
@@ -177,8 +174,7 @@ Handler uploadChunkHandler(RootRegistry registry) {
         body: jsonEncode({
           'error': {
             'code': 'OFFSET_MISMATCH',
-            'message':
-                'Expected offset ${session.bytesReceived}, got $start',
+            'message': 'Expected offset ${session.bytesReceived}, got $start',
           },
           'offset': session.bytesReceived,
         }),
@@ -256,8 +252,7 @@ Handler uploadCompleteHandler(RootRegistry registry, ActivityLog log) {
     }
 
     // Verify checksum.
-    final actualChecksum =
-        sha256.convert(await tmp.readAsBytes()).toString();
+    final actualChecksum = sha256.convert(await tmp.readAsBytes()).toString();
     if (actualChecksum != expectedChecksum) {
       // Clean up temp file on checksum failure.
       await tmp.delete().catchError((_) => File(session.tmpPath));
@@ -278,13 +273,14 @@ Handler uploadCompleteHandler(RootRegistry registry, ActivityLog log) {
     await tmp.rename(session.targetPath);
     _uploads.remove(uploadId);
 
-    final versionToken =
-        computeVersionToken(File(session.targetPath).statSync());
+    final versionToken = computeVersionToken(
+      File(session.targetPath).statSync(),
+    );
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: 'upload_complete',
       path: session.targetPath,
@@ -349,10 +345,7 @@ Handler uploadCancelHandler(RootRegistry registry) {
     }
     _uploads.remove(uploadId);
 
-    return Response.ok(
-      jsonEncode({'cancelled': uploadId}),
-      headers: _json,
-    );
+    return Response.ok(jsonEncode({'cancelled': uploadId}), headers: _json);
   };
 }
 
@@ -361,8 +354,7 @@ Handler uploadCancelHandler(RootRegistry registry) {
 /// Parses `Content-Range: bytes <start>-<end>/<total>`.
 /// Returns (start, end, total) or null on malformed input.
 (int, int, int)? _parseContentRange(String header) {
-  final match =
-      RegExp(r'^bytes (\d+)-(\d+)/(\d+)$').firstMatch(header.trim());
+  final match = RegExp(r'^bytes (\d+)-(\d+)/(\d+)$').firstMatch(header.trim());
   if (match == null) return null;
   final start = int.tryParse(match.group(1)!);
   final end = int.tryParse(match.group(2)!);
@@ -373,12 +365,12 @@ Handler uploadCancelHandler(RootRegistry registry) {
 }
 
 Response _error(int status, String code, String message) => Response(
-      status,
-      headers: _json,
-      body: jsonEncode({
-        'error': {'code': code, 'message': message},
-      }),
-    );
+  status,
+  headers: _json,
+  body: jsonEncode({
+    'error': {'code': code, 'message': message},
+  }),
+);
 
 Future<Map<String, dynamic>?> _parseJson(Request request) async {
   try {

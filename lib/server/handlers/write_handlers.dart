@@ -95,18 +95,15 @@ Handler fileUploadHandler(RootRegistry registry, ActivityLog log) {
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: exists ? 'update' : 'create',
       path: rawPath,
       result: 'ok',
     );
 
-    return Response.ok(
-      jsonEncode({'versionToken': newToken}),
-      headers: _json,
-    );
+    return Response.ok(jsonEncode({'versionToken': newToken}), headers: _json);
   };
 }
 
@@ -152,18 +149,15 @@ Handler fileDeleteHandler(RootRegistry registry, ActivityLog log) {
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: 'delete',
       path: rawPath,
       result: 'ok',
     );
 
-    return Response.ok(
-      jsonEncode({'deleted': rawPath}),
-      headers: _json,
-    );
+    return Response.ok(jsonEncode({'deleted': rawPath}), headers: _json);
   };
 }
 
@@ -220,8 +214,8 @@ Handler batchDeleteHandler(RootRegistry registry, ActivityLog log) {
           results.add({'path': rawPath, 'status': 200, 'message': 'deleted'});
           log.record(
             id: _uuid.v4(),
-            deviceId: '',
-            deviceName: 'guest',
+            deviceId: deviceIdOf(request),
+            deviceName: deviceNameOf(request),
             rootAlias: alias,
             operation: 'delete',
             path: rawPath,
@@ -232,8 +226,8 @@ Handler batchDeleteHandler(RootRegistry registry, ActivityLog log) {
           results.add({'path': rawPath, 'status': 200, 'message': 'deleted'});
           log.record(
             id: _uuid.v4(),
-            deviceId: '',
-            deviceName: 'guest',
+            deviceId: deviceIdOf(request),
+            deviceName: deviceNameOf(request),
             rootAlias: alias,
             operation: 'delete',
             path: rawPath,
@@ -258,12 +252,12 @@ Handler batchDeleteHandler(RootRegistry registry, ActivityLog log) {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 Response _error(int status, String code, String message) => Response(
-      status,
-      headers: _json,
-      body: jsonEncode({
-        'error': {'code': code, 'message': message},
-      }),
-    );
+  status,
+  headers: _json,
+  body: jsonEncode({
+    'error': {'code': code, 'message': message},
+  }),
+);
 
 Future<Map<String, dynamic>?> _parseJson(Request request) async {
   try {

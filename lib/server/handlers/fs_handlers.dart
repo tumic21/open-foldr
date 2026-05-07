@@ -64,15 +64,19 @@ Handler mkdirHandler(RootRegistry registry, ActivityLog log) {
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: 'mkdir',
       path: rawPath,
       result: 'ok',
     );
 
-    return Response(201, headers: _json, body: jsonEncode({'created': rawPath}));
+    return Response(
+      201,
+      headers: _json,
+      body: jsonEncode({'created': rawPath}),
+    );
   };
 }
 
@@ -171,8 +175,8 @@ Handler renameHandler(RootRegistry registry, ActivityLog log) {
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: 'rename',
       path: rawFrom,
@@ -263,8 +267,8 @@ Handler copyHandler(RootRegistry registry, ActivityLog log) {
 
     log.record(
       id: _uuid.v4(),
-      deviceId: '',
-      deviceName: 'guest',
+      deviceId: deviceIdOf(request),
+      deviceName: deviceNameOf(request),
       rootAlias: alias,
       operation: 'copy',
       path: rawFrom,
@@ -392,8 +396,8 @@ Handler batchMoveHandler(RootRegistry registry, ActivityLog log) {
         results.add({'item': rawItem, 'status': 200, 'message': 'moved'});
         log.record(
           id: _uuid.v4(),
-          deviceId: '',
-          deviceName: 'guest',
+          deviceId: deviceIdOf(request),
+          deviceName: deviceNameOf(request),
           rootAlias: alias,
           operation: 'move',
           path: rawItem,
@@ -512,8 +516,8 @@ Handler batchCopyHandler(RootRegistry registry, ActivityLog log) {
         results.add({'item': rawItem, 'status': 200, 'message': 'copied'});
         log.record(
           id: _uuid.v4(),
-          deviceId: '',
-          deviceName: 'guest',
+          deviceId: deviceIdOf(request),
+          deviceName: deviceNameOf(request),
           rootAlias: alias,
           operation: 'copy',
           path: rawItem,
@@ -541,12 +545,12 @@ Handler batchCopyHandler(RootRegistry registry, ActivityLog log) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 Response _error(int status, String code, String message) => Response(
-      status,
-      headers: _json,
-      body: jsonEncode({
-        'error': {'code': code, 'message': message},
-      }),
-    );
+  status,
+  headers: _json,
+  body: jsonEncode({
+    'error': {'code': code, 'message': message},
+  }),
+);
 
 Future<Map<String, dynamic>?> _parseJson(Request request) async {
   try {

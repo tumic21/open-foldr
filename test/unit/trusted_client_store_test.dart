@@ -1,11 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_foldr/core/trusted_client_store.dart';
 import 'package:open_foldr/models/role.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
+  setUp(() async {
+    await TrustedClientStore.clear();
   });
 
   group('TrustedClientStore', () {

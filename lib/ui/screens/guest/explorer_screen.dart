@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../../client/file_client.dart';
 import '../../../core/client_credential_store.dart';
 import 'file_manager_screen.dart';
@@ -32,8 +34,27 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   bool _requiresNewCode = false;
   String _role = 'viewer';
   FileClient? _client;
+  String? _knownDeviceId;
 
   String get _base => 'http://${widget.hostAddress}:${widget.port}/v1';
+
+  Future<({String? id, String? name})> _resolveHostInfo() async {
+    if (widget.hostId != null && widget.hostId!.isNotEmpty) {
+      return (id: widget.hostId, name: null);
+    }
+    try {
+      final res = await http.get(Uri.parse('$_base/health'));
+      if (res.statusCode != 200) return (id: null, name: null);
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final host = body['host'] as Map<String, dynamic>?;
+      final id = host?['id'] as String?;
+      final name = host?['name'] as String?;
+      if (id == null || id.isEmpty) return (id: null, name: name);
+      return (id: id, name: name);
+    } catch (_) {
+      return (id: null, name: null);
+    }
+  }
 
   @override
   void initState() {
@@ -54,10 +75,15 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       _requiresNewCode = false;
     });
     try {
+      final hostInfo = await _resolveHostInfo();
+      final effectiveHostId = hostInfo.id;
+      final effectiveHostName = hostInfo.name ?? widget.hostAddress;
+
       // ── Try reconnect with stored device token first ──────────────────────
-      if (widget.hostId != null) {
-        final cred = await ClientCredentialStore.find(widget.hostId!);
+      if (effectiveHostId != null) {
+        final cred = await ClientCredentialStore.find(effectiveHostId);
         if (cred != null) {
+          _knownDeviceId = cred.deviceId;
           final reconnResult = await FileClient.reconnect(
             baseUrl: _base,
             deviceToken: cred.deviceToken,
@@ -71,7 +97,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
             return;
           }
           // Token revoked or expired — fall through to full pairing.
-          await ClientCredentialStore.remove(widget.hostId!);
+          await ClientCredentialStore.remove(effectiveHostId);
         }
       }
 
@@ -79,6 +105,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       final result = await FileClient.pair(
         baseUrl: _base,
         pairingSecret: widget.pairingSecret,
+        deviceId: _knownDeviceId,
       );
 
       if (result.isErr) {
@@ -101,12 +128,13 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       _client = pairData.client;
 
       // Persist credentials so we can reconnect silently next time.
-      if (widget.hostId != null &&
+      if (effectiveHostId != null &&
           pairData.deviceToken.isNotEmpty &&
           pairData.deviceId.isNotEmpty) {
         unawaited(
           ClientCredentialStore.save(
-            hostId: widget.hostId!,
+            hostId: effectiveHostId,
+            hostName: effectiveHostName,
             hostAddress: widget.hostAddress,
             port: widget.port,
             deviceToken: pairData.deviceToken,

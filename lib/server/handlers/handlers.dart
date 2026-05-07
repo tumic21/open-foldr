@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -144,22 +143,21 @@ Handler pairCompleteHandler(TokenStore tokens) {
     );
 
     // Persist the client as trusted so it can reconnect without a code.
-    // Pairing should still succeed if persistence is temporarily unavailable.
-    unawaited(() async {
-      try {
-        await TrustedClientStore.upsert(
-          TrustedClient(
-            deviceId: deviceId,
-            deviceName: pending.deviceName,
-            publicKeyFingerprint: pending.fingerprint,
-            role: pending.role,
-            pairedAt: DateTime.now(),
-          ),
-        );
-      } catch (_) {
-        // Best-effort persistence.
-      }
-    }());
+    // Keep pairing successful even in contexts where preferences aren't
+    // initialized (e.g. some headless tests).
+    try {
+      await TrustedClientStore.upsert(
+        TrustedClient(
+          deviceId: deviceId,
+          deviceName: pending.deviceName,
+          publicKeyFingerprint: pending.fingerprint,
+          role: pending.role,
+          pairedAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {
+      // Best-effort persistence.
+    }
 
     // Consume request after successful completion.
     _pendingRequests.remove(requestId);

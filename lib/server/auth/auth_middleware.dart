@@ -4,6 +4,8 @@ import '../pairing/token_store.dart';
 import '../../models/role.dart';
 
 const _roleKey = 'openfoldr.role';
+const _deviceIdKey = 'openfoldr.deviceId';
+const _deviceNameKey = 'openfoldr.deviceName';
 
 /// Shelf middleware that enforces Bearer token authentication.
 Middleware bearerAuthMiddleware(TokenStore store) {
@@ -18,15 +20,19 @@ Middleware bearerAuthMiddleware(TokenStore store) {
       final isWatchRequest =
           request.method == 'GET' && request.url.path.endsWith('/watch');
       if (isWatchRequest && watchToken != null && watchToken.isNotEmpty) {
-        final role = store.validate(watchToken);
-        if (role == null) {
+        final auth = store.validateWithDevice(watchToken);
+        if (auth == null) {
           return _unauthorized('Token invalid or expired');
         }
 
-        final updated = request.change(context: {
-          ...request.context,
-          _roleKey: role,
-        });
+        final updated = request.change(
+          context: {
+            ...request.context,
+            _roleKey: auth.role,
+            _deviceIdKey: auth.deviceId,
+            _deviceNameKey: auth.deviceName,
+          },
+        );
         return inner(updated);
       }
 
@@ -36,16 +42,20 @@ Middleware bearerAuthMiddleware(TokenStore store) {
       }
 
       final token = header.substring(7);
-      final role = store.validate(token);
-      if (role == null) {
+      final auth = store.validateWithDevice(token);
+      if (auth == null) {
         return _unauthorized('Token invalid or expired');
       }
 
       // Pass role and device context into request locals.
-      final updated = request.change(context: {
-        ...request.context,
-        _roleKey: role,
-      });
+      final updated = request.change(
+        context: {
+          ...request.context,
+          _roleKey: auth.role,
+          _deviceIdKey: auth.deviceId,
+          _deviceNameKey: auth.deviceName,
+        },
+      );
 
       return inner(updated);
     };
@@ -56,10 +66,16 @@ Middleware bearerAuthMiddleware(TokenStore store) {
 Role roleOf(Request request) =>
     request.context[_roleKey] as Role? ?? Role.viewer;
 
+String deviceIdOf(Request request) =>
+    request.context[_deviceIdKey] as String? ?? '';
+
+String deviceNameOf(Request request) =>
+    request.context[_deviceNameKey] as String? ?? 'unknown';
+
 Response _unauthorized(String message) => Response(
-      401,
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({
-        'error': {'code': 'UNAUTHORIZED', 'message': message},
-      }),
-    );
+  401,
+  headers: {'content-type': 'application/json'},
+  body: jsonEncode({
+    'error': {'code': 'UNAUTHORIZED', 'message': message},
+  }),
+);

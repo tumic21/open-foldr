@@ -27,7 +27,9 @@ class _SessionScreenState extends State<SessionScreen> {
   late String _secret;
   late int _secondsLeft;
   Timer? _expiryTimer;
+  Timer? _trustedRefreshTimer;
   List<TrustedClient> _trustedClients = [];
+  String _hostIp = 'Detecting...';
 
   InlineSpan get _roleTooltipMessage => TextSpan(
     style: const TextStyle(color: Colors.white, height: 1.5),
@@ -82,10 +84,42 @@ class _SessionScreenState extends State<SessionScreen> {
   void initState() {
     super.initState();
     _renewPairingSecret();
+    _loadHostIp();
     _loadTrustedClients();
+    _trustedRefreshTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _loadTrustedClients(),
+    );
     widget.server.log.stream.listen((e) {
       if (mounted) setState(() => _events.insert(0, e));
     });
+  }
+
+  Future<void> _loadHostIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.any,
+      );
+
+      final allAddresses = interfaces
+          .expand((i) => i.addresses)
+          .where((a) => !a.isLoopback)
+          .toList();
+
+      final ipv4 = allAddresses.firstWhere(
+        (a) => a.type == InternetAddressType.IPv4,
+        orElse: () => allAddresses.isNotEmpty
+            ? allAddresses.first
+            : InternetAddress.anyIPv4,
+      );
+
+      if (!mounted) return;
+      setState(() => _hostIp = ipv4.address);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hostIp = 'Unavailable');
+    }
   }
 
   Future<void> _loadTrustedClients() async {
@@ -158,6 +192,7 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   void dispose() {
     _expiryTimer?.cancel();
+    _trustedRefreshTimer?.cancel();
     widget.server.stop();
     super.dispose();
   }
@@ -286,6 +321,16 @@ class _SessionScreenState extends State<SessionScreen> {
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Host IP: $_hostIp',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        fontWeight: FontWeight.w600,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -447,9 +492,13 @@ class _SessionScreenState extends State<SessionScreen> {
               (c) => ListTile(
                 dense: true,
                 leading: const Icon(Icons.devices),
-                title: Text(c.deviceName),
+                title: Text(
+                  c.deviceName == 'Guest'
+                      ? 'Client ${c.deviceId.substring(0, 8)}'
+                      : c.deviceName,
+                ),
                 subtitle: Text(
-                  'Role: ${c.role.displayName} · Paired ${_formatDate(c.pairedAt)}',
+                  'ID: ${c.deviceId} · Role: ${c.role.displayName} · Paired ${_formatDate(c.pairedAt)}',
                 ),
                 trailing: IconButton(
                   icon: const Icon(

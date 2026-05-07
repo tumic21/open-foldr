@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import '../core/client_identity_store.dart';
 import '../core/result.dart';
 export '../core/result.dart';
 
@@ -34,17 +35,21 @@ class FileClient {
     required String baseUrl,
     required String pairingSecret,
     String? deviceId,
+    String? clientName,
+    String? clientFingerprint,
     http.Client? httpClient,
   }) async {
     final rawHttp = httpClient ?? http.Client();
     try {
+      final identity = await ClientIdentityStore.load();
+
       // Step 1 — request pairing.
       final reqRes = await rawHttp.post(
         Uri.parse('$baseUrl/auth/pair/request'),
         headers: {'content-type': 'application/json'},
         body: jsonEncode({
-          'deviceName': 'Guest',
-          'devicePublicKey': '',
+          'deviceName': clientName ?? identity.name,
+          'devicePublicKey': clientFingerprint ?? identity.id,
           'pairingSecret': pairingSecret,
           if (deviceId != null) 'deviceId': deviceId,
         }),

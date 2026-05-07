@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,13 +43,47 @@ class TrustedClient {
 
 /// Persists and retrieves the host's list of trusted (remembered) clients.
 class TrustedClientStore {
-  static const _key = 'trusted_clients';
+  static const _prefsKey = 'trusted_clients';
 
-  static Future<List<TrustedClient>> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null) return [];
+  static File _storageFile() {
+    final isTest =
+        Platform.environment.containsKey('FLUTTER_TEST') ||
+        Platform.environment.containsKey('DART_TEST');
+
+    if (isTest) {
+      return File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}open_foldr_test${Platform.pathSeparator}trusted_clients.json',
+      );
+    }
+
+    if (Platform.isWindows) {
+      final base =
+          Platform.environment['APPDATA'] ??
+          Platform.environment['USERPROFILE'];
+      if (base != null && base.isNotEmpty) {
+        return File(
+          '$base${Platform.pathSeparator}OpenFoldr${Platform.pathSeparator}trusted_clients.json',
+        );
+      }
+    }
+
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return File(
+        '$home${Platform.pathSeparator}.open_foldr${Platform.pathSeparator}trusted_clients.json',
+      );
+    }
+
+    return File(
+      '${Directory.current.path}${Platform.pathSeparator}.open_foldr${Platform.pathSeparator}trusted_clients.json',
+    );
+  }
+
+  static Future<List<TrustedClient>> _loadFromPrefs() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null) return [];
       final list = jsonDecode(raw) as List<dynamic>;
       return list
           .map((e) => TrustedClient.fromJson(e as Map<String, dynamic>))
@@ -58,12 +93,59 @@ class TrustedClientStore {
     }
   }
 
+  static Future<List<TrustedClient>> load() async {
+    final file = _storageFile();
+    try {
+      if (await file.exists()) {
+        final raw = await file.readAsString();
+        final list = jsonDecode(raw) as List<dynamic>;
+        return list
+            .map((e) => TrustedClient.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+
+      // One-time migration from legacy SharedPreferences storage.
+      final migrated = await _loadFromPrefs();
+      if (migrated.isNotEmpty) {
+        await save(migrated);
+      }
+      return migrated;
+    } catch (_) {
+      return [];
+    }
+  }
+
   static Future<void> save(List<TrustedClient> clients) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _key,
+    final file = _storageFile();
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
       jsonEncode(clients.map((c) => c.toJson()).toList()),
+      flush: true,
     );
+
+    // Keep legacy storage best-effort for compatibility.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefsKey,
+        jsonEncode(clients.map((c) => c.toJson()).toList()),
+      );
+    } catch (_) {
+      // Ignore preference write failures.
+    }
+  }
+
+  static Future<void> clear() async {
+    final file = _storageFile();
+    if (await file.exists()) {
+      await file.delete();
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsKey);
+    } catch (_) {
+      // Ignore preference clear failures.
+    }
   }
 
   /// Upsert a trusted client by deviceId (update role/name if already stored).

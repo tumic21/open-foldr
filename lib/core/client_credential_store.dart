@@ -8,7 +8,7 @@ class ClientCredentialStore {
   static const _key = 'client_credentials';
 
   /// Load all saved credentials keyed by hostId.
-  static Future<Map<String, _HostCredential>> _loadAll() async {
+  static Future<Map<String, HostCredential>> _loadAll() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
     if (raw == null) return {};
@@ -16,14 +16,14 @@ class ClientCredentialStore {
       final map = jsonDecode(raw) as Map<String, dynamic>;
       return map.map(
         (k, v) =>
-            MapEntry(k, _HostCredential.fromJson(v as Map<String, dynamic>)),
+            MapEntry(k, HostCredential.fromJson(v as Map<String, dynamic>)),
       );
     } catch (_) {
       return {};
     }
   }
 
-  static Future<void> _saveAll(Map<String, _HostCredential> all) async {
+  static Future<void> _saveAll(Map<String, HostCredential> all) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _key,
@@ -34,14 +34,16 @@ class ClientCredentialStore {
   /// Save (or update) the device token for a host.
   static Future<void> save({
     required String hostId,
+    required String hostName,
     required String hostAddress,
     required int port,
     required String deviceToken,
     required String deviceId,
   }) async {
     final all = await _loadAll();
-    all[hostId] = _HostCredential(
+    all[hostId] = HostCredential(
       hostId: hostId,
+      hostName: hostName,
       hostAddress: hostAddress,
       port: port,
       deviceToken: deviceToken,
@@ -51,7 +53,7 @@ class ClientCredentialStore {
   }
 
   /// Retrieve credentials for a host by its id.
-  static Future<_HostCredential?> find(String hostId) async {
+  static Future<HostCredential?> find(String hostId) async {
     final all = await _loadAll();
     return all[hostId];
   }
@@ -64,15 +66,17 @@ class ClientCredentialStore {
   }
 }
 
-class _HostCredential {
+class HostCredential {
   final String hostId;
+  final String hostName;
   final String hostAddress;
   final int port;
   final String deviceToken;
   final String deviceId;
 
-  const _HostCredential({
+  const HostCredential({
     required this.hostId,
+    required this.hostName,
     required this.hostAddress,
     required this.port,
     required this.deviceToken,
@@ -81,34 +85,20 @@ class _HostCredential {
 
   Map<String, dynamic> toJson() => {
     'hostId': hostId,
+    'hostName': hostName,
     'hostAddress': hostAddress,
     'port': port,
     'deviceToken': deviceToken,
     'deviceId': deviceId,
   };
 
-  factory _HostCredential.fromJson(Map<String, dynamic> j) => _HostCredential(
+  factory HostCredential.fromJson(Map<String, dynamic> j) => HostCredential(
     hostId: j['hostId'] as String,
+    hostName:
+        (j['hostName'] as String?) ?? (j['hostAddress'] as String? ?? 'Host'),
     hostAddress: j['hostAddress'] as String,
     port: j['port'] as int,
     deviceToken: j['deviceToken'] as String,
     deviceId: j['deviceId'] as String,
   );
-}
-
-/// Public view of stored host credentials.
-class HostCredential {
-  final String hostId;
-  final String hostAddress;
-  final int port;
-  final String deviceToken;
-  final String deviceId;
-
-  const HostCredential({
-    required this.hostId,
-    required this.hostAddress,
-    required this.port,
-    required this.deviceToken,
-    required this.deviceId,
-  });
 }
