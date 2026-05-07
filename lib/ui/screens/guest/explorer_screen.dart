@@ -185,7 +185,16 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
         builder: (_) =>
             FileManagerScreen(client: _client!, alias: alias, role: _role),
       ),
-    );
+    ).then((_) => _onReturnFromFileManager());
+  }
+
+  Future<void> _onReturnFromFileManager() async {
+    if (!mounted || _client == null) return;
+    final result = await _client!.getSessionRole();
+    if (result.isErr) {
+      // Session expired or revoked while browsing — re-pair silently.
+      await _pair();
+    }
   }
 
   @override

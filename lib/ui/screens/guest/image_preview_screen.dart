@@ -9,6 +9,8 @@ class ImagePreviewScreen extends StatefulWidget {
   final String alias;
   final String remotePath;
   final String fileName;
+  final List<FileEntry>? imageEntries;
+  final int initialIndex;
 
   const ImagePreviewScreen({
     super.key,
@@ -16,6 +18,8 @@ class ImagePreviewScreen extends StatefulWidget {
     required this.alias,
     required this.remotePath,
     required this.fileName,
+    this.imageEntries,
+    this.initialIndex = 0,
   });
 
   @override
@@ -26,23 +30,44 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
   bool _loading = true;
   String? _error;
   ImageProvider? _provider;
+  late final List<FileEntry> _images;
+  late int _currentIndex;
+  int _loadGeneration = 0;
+
+  FileEntry get _currentImage => _images[_currentIndex];
 
   @override
   void initState() {
     super.initState();
+    _images =
+        widget.imageEntries ??
+        [
+          FileEntry(
+            name: widget.fileName,
+            path: widget.remotePath,
+            kind: 'file',
+            size: 0,
+            modifiedAt: DateTime.now(),
+          ),
+        ];
+    _currentIndex = widget.initialIndex.clamp(0, _images.length - 1);
     _load();
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
       _provider = null;
     });
 
-    final result =
-        await widget.client.downloadFile(widget.alias, widget.remotePath);
+    final result = await widget.client.downloadFile(
+      widget.alias,
+      _currentImage.path,
+    );
     if (!mounted) return;
+    if (generation != _loadGeneration) return;
 
     if (result.isErr) {
       setState(() {
@@ -61,6 +86,7 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
       (imageInfo, _) {
         stream.removeListener(listener);
         if (!mounted) return;
+        if (generation != _loadGeneration) return;
 
         // Avoid huge decodes for very large images by downscaling to <= 8 MP.
         final w = imageInfo.image.width;
@@ -80,6 +106,7 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
       onError: (_, stackTrace) {
         stream.removeListener(listener);
         if (!mounted) return;
+        if (generation != _loadGeneration) return;
         setState(() {
           _loading = false;
           _error = 'Could not decode image file.';
@@ -90,12 +117,34 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
     stream.addListener(listener);
   }
 
+  void _showPrevious() {
+    if (_currentIndex <= 0) return;
+    setState(() => _currentIndex--);
+    _load();
+  }
+
+  void _showNext() {
+    if (_currentIndex >= _images.length - 1) return;
+    setState(() => _currentIndex++);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.fileName),
+        title: Text(_currentImage.name),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Previous image',
+            onPressed: _currentIndex > 0 ? _showPrevious : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next image',
+            onPressed: _currentIndex < _images.length - 1 ? _showNext : null,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload',

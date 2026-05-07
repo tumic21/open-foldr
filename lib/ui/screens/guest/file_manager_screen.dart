@@ -434,10 +434,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (!mounted) return;
     if (result.isOk) {
       _state.setEntries(result.unwrap);
+      _startWatcher();
+    } else if (result.errorCode == 'UNAUTHORIZED') {
+      // Session token expired — pop back so ExplorerScreen can re-pair.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session expired. Reconnecting…')),
+      );
+      Navigator.of(context).pop();
     } else {
       _state.setError(result.errorMessage);
+      _startWatcher();
     }
-    _startWatcher();
   }
 
   /// (Re)starts the [WatchClient] for the current directory.
@@ -1570,6 +1577,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (_isImageFile(entry.name)) {
       widget.onOpenFile?.call('image', entry);
       if (widget.onOpenFile != null) return;
+      final imageEntries = _state.entries
+          .where((e) => e.isFile && _isImageFile(e.name))
+          .toList();
+      final initialIndex = imageEntries.indexWhere((e) => e.path == entry.path);
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -1578,6 +1589,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             alias: widget.alias,
             remotePath: entry.path,
             fileName: entry.name,
+            imageEntries: imageEntries,
+            initialIndex: initialIndex < 0 ? 0 : initialIndex,
           ),
         ),
       );
