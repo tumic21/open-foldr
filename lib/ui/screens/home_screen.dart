@@ -45,6 +45,12 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Image.asset(
+                  'assets/icons/icon.png',
+                  width: 96,
+                  height: 96,
+                ),
+                const SizedBox(height: 16),
                 Text(
                   'OpenFoldr',
                   textAlign: TextAlign.center,

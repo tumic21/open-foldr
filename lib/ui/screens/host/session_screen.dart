@@ -413,7 +413,7 @@ class _SessionScreenState extends State<SessionScreen> {
           else
             ...sharedRoots.map(
               (r) => ListTile(
-                leading: const Icon(Icons.folder_shared),
+                leading: Image.asset('assets/icons/icon.png', width: 32, height: 32),
                 title: Text(r.alias),
                 subtitle: Text(r.localPath),
                 trailing: Row(
