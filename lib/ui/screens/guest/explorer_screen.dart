@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../client/file_client.dart';
+import '../../../core/client_credential_store.dart';
 import 'file_manager_screen.dart';
 
 class ExplorerScreen extends StatefulWidget {
@@ -7,11 +10,15 @@ class ExplorerScreen extends StatefulWidget {
   final int port;
   final String pairingSecret;
 
+  /// Stable host id from the /v1/health response (used for credential lookup).
+  final String? hostId;
+
   const ExplorerScreen({
     super.key,
     required this.hostAddress,
     required this.port,
     required this.pairingSecret,
+    this.hostId,
   });
 
   @override
@@ -47,6 +54,28 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       _requiresNewCode = false;
     });
     try {
+      // ── Try reconnect with stored device token first ──────────────────────
+      if (widget.hostId != null) {
+        final cred = await ClientCredentialStore.find(widget.hostId!);
+        if (cred != null) {
+          final reconnResult = await FileClient.reconnect(
+            baseUrl: _base,
+            deviceToken: cred.deviceToken,
+            deviceId: cred.deviceId,
+          );
+          if (reconnResult.isOk) {
+            final pairData = reconnResult.unwrap;
+            _client = pairData.client;
+            setState(() => _role = pairData.role);
+            await _loadRoots();
+            return;
+          }
+          // Token revoked or expired — fall through to full pairing.
+          await ClientCredentialStore.remove(widget.hostId!);
+        }
+      }
+
+      // ── Full pairing handshake ────────────────────────────────────────────
       final result = await FileClient.pair(
         baseUrl: _base,
         pairingSecret: widget.pairingSecret,
@@ -71,9 +100,22 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       final pairData = result.unwrap;
       _client = pairData.client;
 
-      setState(() {
-        _role = pairData.role;
-      });
+      // Persist credentials so we can reconnect silently next time.
+      if (widget.hostId != null &&
+          pairData.deviceToken.isNotEmpty &&
+          pairData.deviceId.isNotEmpty) {
+        unawaited(
+          ClientCredentialStore.save(
+            hostId: widget.hostId!,
+            hostAddress: widget.hostAddress,
+            port: widget.port,
+            deviceToken: pairData.deviceToken,
+            deviceId: pairData.deviceId,
+          ),
+        );
+      }
+
+      setState(() => _role = pairData.role);
       await _loadRoots();
     } on _PairingCodeException catch (e) {
       setState(() {
@@ -112,11 +154,8 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => FileManagerScreen(
-          client: _client!,
-          alias: alias,
-          role: _role,
-        ),
+        builder: (_) =>
+            FileManagerScreen(client: _client!, alias: alias, role: _role),
       ),
     );
   }
@@ -179,9 +218,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 return ListTile(
                   leading: const Icon(Icons.folder_shared),
                   title: Text(root['alias'] as String),
-                  subtitle: Text(
-                    'Requires at least: ${root['minimumRole']}',
-                  ),
+                  subtitle: Text('Requires at least: ${root['minimumRole']}'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () => _openRoot(root['alias'] as String),
                 );

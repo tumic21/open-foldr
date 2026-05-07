@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../core/constants.dart';
 import '../../../core/host_identity.dart';
 import '../../../core/session_store.dart';
+import '../../../core/trusted_client_store.dart';
 import '../../../models/role.dart';
 import '../../../models/shared_root.dart';
 import '../../../server/server.dart';
@@ -26,44 +27,39 @@ class _SessionScreenState extends State<SessionScreen> {
   late String _secret;
   late int _secondsLeft;
   Timer? _expiryTimer;
+  List<TrustedClient> _trustedClients = [];
 
   InlineSpan get _roleTooltipMessage => TextSpan(
-        style: const TextStyle(color: Colors.white, height: 1.5),
-        children: const [
-          TextSpan(
-            text: 'Role Permissions\n',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-          ),
-          TextSpan(
-            text: 'Role      Read   Write   Delete   Admin\n',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          TextSpan(
-            text: 'Viewer    Yes    No      No       No\n',
-            style: TextStyle(fontFamily: 'monospace'),
-          ),
-          TextSpan(
-            text: 'Editor    Yes    Yes     No       No\n',
-            style: TextStyle(fontFamily: 'monospace'),
-          ),
-          TextSpan(
-            text: 'Owner     Yes    Yes     Yes      Yes',
-            style: TextStyle(fontFamily: 'monospace'),
-          ),
-        ],
-      );
+    style: const TextStyle(color: Colors.white, height: 1.5),
+    children: const [
+      TextSpan(
+        text: 'Role Permissions\n',
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+      TextSpan(
+        text: 'Role      Read   Write   Delete   Admin\n',
+        style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600),
+      ),
+      TextSpan(
+        text: 'Viewer    Yes    No      No       No\n',
+        style: TextStyle(fontFamily: 'monospace'),
+      ),
+      TextSpan(
+        text: 'Editor    Yes    Yes     No       No\n',
+        style: TextStyle(fontFamily: 'monospace'),
+      ),
+      TextSpan(
+        text: 'Owner     Yes    Yes     Yes      Yes',
+        style: TextStyle(fontFamily: 'monospace'),
+      ),
+    ],
+  );
 
   Widget _buildRoleTooltip(Widget child) {
     return Tooltip(
       richMessage: _roleTooltipMessage,
       waitDuration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       margin: const EdgeInsets.all(12),
       verticalOffset: 16,
       decoration: BoxDecoration(
@@ -86,9 +82,55 @@ class _SessionScreenState extends State<SessionScreen> {
   void initState() {
     super.initState();
     _renewPairingSecret();
+    _loadTrustedClients();
     widget.server.log.stream.listen((e) {
       if (mounted) setState(() => _events.insert(0, e));
     });
+  }
+
+  Future<void> _loadTrustedClients() async {
+    final clients = await TrustedClientStore.load();
+    if (mounted) setState(() => _trustedClients = clients);
+  }
+
+  Future<void> _removeTrustedClient(String deviceId) async {
+    await TrustedClientStore.remove(deviceId);
+    widget.server.tokens.revokeDevice(deviceId);
+    if (mounted) {
+      setState(
+        () => _trustedClients.removeWhere((c) => c.deviceId == deviceId),
+      );
+    }
+  }
+
+  void _confirmRemoveTrustedClient(TrustedClient client) {
+    showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove client?'),
+        content: Text(
+          '"${client.deviceName}" will need to pair again with a new code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) _removeTrustedClient(client.deviceId);
+    });
+  }
+
+  String _formatDate(DateTime dt) {
+    final d = dt.toLocal();
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
   void _renewPairingSecret() {
@@ -375,6 +417,47 @@ class _SessionScreenState extends State<SessionScreen> {
                       onPressed: () => _removeSharedFolder(r.alias),
                     ),
                   ],
+                ),
+              ),
+            ),
+
+          const Divider(),
+
+          // Trusted (remembered) clients
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Remembered clients',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          if (_trustedClients.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'No remembered clients yet.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            )
+          else
+            ..._trustedClients.map(
+              (c) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.devices),
+                title: Text(c.deviceName),
+                subtitle: Text(
+                  'Role: ${c.role.displayName} · Paired ${_formatDate(c.pairedAt)}',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(
+                    Icons.remove_circle_outline,
+                    color: Colors.red,
+                  ),
+                  tooltip: 'Remove & revoke',
+                  onPressed: () => _confirmRemoveTrustedClient(c),
                 ),
               ),
             ),

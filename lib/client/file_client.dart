@@ -28,11 +28,12 @@ class FileClient {
   // ─── Pairing (static factory) ────────────────────────────────────────────
 
   /// Executes the two-step pairing handshake against [baseUrl] using
-  /// [pairingSecret] and returns a ready-to-use [FileClient] plus the
-  /// negotiated [PairData] on success.
+  /// [pairingSecret] and [deviceId] (if reconnecting a known device)
+  /// and returns a ready-to-use [FileClient] plus the negotiated [PairData].
   static Future<Result<PairData>> pair({
     required String baseUrl,
     required String pairingSecret,
+    String? deviceId,
     http.Client? httpClient,
   }) async {
     final rawHttp = httpClient ?? http.Client();
@@ -45,6 +46,7 @@ class FileClient {
           'deviceName': 'Guest',
           'devicePublicKey': '',
           'pairingSecret': pairingSecret,
+          if (deviceId != null) 'deviceId': deviceId,
         }),
       );
       if (reqRes.statusCode != 200) {
@@ -63,18 +65,73 @@ class FileClient {
       if (completeRes.statusCode != 200) {
         return _errFromResponse<PairData>(completeRes);
       }
-      final completeBody =
-          jsonDecode(completeRes.body) as Map<String, dynamic>;
+      final completeBody = jsonDecode(completeRes.body) as Map<String, dynamic>;
       final token = completeBody['sessionToken'] as String;
       final role = completeBody['role'] as String? ?? 'viewer';
+      final returnedDeviceToken = completeBody['deviceToken'] as String? ?? '';
+      final returnedDeviceId = completeBody['deviceId'] as String? ?? '';
 
       final client = FileClient(
         baseUrl: baseUrl,
         sessionToken: token,
-        // Reuse the same underlying connection pool.
         httpClient: rawHttp,
       );
-      return Ok(PairData(client: client, sessionToken: token, role: role));
+      return Ok(
+        PairData(
+          client: client,
+          sessionToken: token,
+          role: role,
+          deviceToken: returnedDeviceToken,
+          deviceId: returnedDeviceId,
+        ),
+      );
+    } catch (e) {
+      rawHttp.close();
+      return Err('NETWORK_ERROR', e.toString());
+    }
+  }
+
+  /// Tries to re-establish a session using a previously issued [deviceToken].
+  /// Returns [Ok(PairData)] on success, or an [Err] if the token is invalid.
+  static Future<Result<PairData>> reconnect({
+    required String baseUrl,
+    required String deviceToken,
+    required String deviceId,
+    http.Client? httpClient,
+  }) async {
+    final rawHttp = httpClient ?? http.Client();
+    try {
+      final res = await rawHttp.post(
+        Uri.parse('$baseUrl/auth/token/refresh'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({'deviceToken': deviceToken}),
+      );
+      if (res.statusCode != 200) {
+        rawHttp.close();
+        return _errFromResponse<PairData>(res);
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final sessionToken = body['sessionToken'] as String;
+
+      // Fetch current role.
+      final client = FileClient(
+        baseUrl: baseUrl,
+        sessionToken: sessionToken,
+        httpClient: rawHttp,
+      );
+      String role = 'viewer';
+      final roleResult = await client.getSessionRole();
+      if (roleResult.isOk) role = roleResult.unwrap;
+
+      return Ok(
+        PairData(
+          client: client,
+          sessionToken: sessionToken,
+          role: role,
+          deviceToken: deviceToken,
+          deviceId: deviceId,
+        ),
+      );
     } catch (e) {
       rawHttp.close();
       return Err('NETWORK_ERROR', e.toString());
@@ -116,12 +173,10 @@ class FileClient {
   // ─── Directory listing ──────────────────────────────────────────────────
 
   /// Lists entries (files and sub-directories) at [path] under [alias].
-  Future<Result<List<FileEntry>>> listEntries(
-    String alias,
-    String path,
-  ) async {
-    final uri = Uri.parse('$baseUrl/roots/$alias/entries')
-        .replace(queryParameters: {'path': path});
+  Future<Result<List<FileEntry>>> listEntries(String alias, String path) async {
+    final uri = Uri.parse(
+      '$baseUrl/roots/$alias/entries',
+    ).replace(queryParameters: {'path': path});
     try {
       final res = await _http.get(uri, headers: _authHeaders());
       if (res.statusCode == 200) {
@@ -142,8 +197,9 @@ class FileClient {
 
   /// Downloads the file at [path] under [alias] and returns its raw bytes.
   Future<Result<Uint8List>> downloadFile(String alias, String path) async {
-    final uri = Uri.parse('$baseUrl/roots/$alias/file')
-        .replace(queryParameters: {'path': path});
+    final uri = Uri.parse(
+      '$baseUrl/roots/$alias/file',
+    ).replace(queryParameters: {'path': path});
     try {
       final res = await _http.get(uri, headers: _authHeaders());
       if (res.statusCode == 200) return Ok(res.bodyBytes);
@@ -157,14 +213,15 @@ class FileClient {
 
   /// Returns metadata (including the current `versionToken`) for a file.
   Future<Result<FileMetadata>> getMetadata(String alias, String path) async {
-    final uri = Uri.parse('$baseUrl/roots/$alias/metadata')
-        .replace(queryParameters: {'path': path});
+    final uri = Uri.parse(
+      '$baseUrl/roots/$alias/metadata',
+    ).replace(queryParameters: {'path': path});
     try {
       final res = await _http.get(uri, headers: _authHeaders());
       if (res.statusCode == 200) {
-        return Ok(FileMetadata.fromJson(
-          jsonDecode(res.body) as Map<String, dynamic>,
-        ));
+        return Ok(
+          FileMetadata.fromJson(jsonDecode(res.body) as Map<String, dynamic>),
+        );
       }
       return _errFromBody(res);
     } catch (e) {
@@ -187,8 +244,9 @@ class FileClient {
     Uint8List bytes, {
     String? ifMatch,
   }) async {
-    final uri = Uri.parse('$baseUrl/roots/$alias/file')
-        .replace(queryParameters: {'path': path});
+    final uri = Uri.parse(
+      '$baseUrl/roots/$alias/file',
+    ).replace(queryParameters: {'path': path});
     final headers = _authHeaders()
       ..['content-type'] = 'application/octet-stream';
     if (ifMatch != null) headers['if-match'] = ifMatch;
@@ -208,8 +266,9 @@ class FileClient {
 
   /// Deletes a file or directory (recursively) at [path] under [alias].
   Future<Result<void>> deleteItem(String alias, String path) async {
-    final uri = Uri.parse('$baseUrl/roots/$alias/file')
-        .replace(queryParameters: {'path': path});
+    final uri = Uri.parse(
+      '$baseUrl/roots/$alias/file',
+    ).replace(queryParameters: {'path': path});
     try {
       final res = await _http.delete(uri, headers: _authHeaders());
       if (res.statusCode == 200) return const Ok(null);
@@ -269,11 +328,7 @@ class FileClient {
   /// Renames (or moves) a single item within the same root.
   ///
   /// [from] and [to] are root-relative paths.
-  Future<Result<void>> rename(
-    String alias,
-    String from,
-    String to,
-  ) async {
+  Future<Result<void>> rename(String alias, String from, String to) async {
     final uri = Uri.parse('$baseUrl/roots/$alias/rename');
     try {
       final res = await _http.post(
@@ -291,11 +346,7 @@ class FileClient {
   /// Copies a single item within the same root.
   ///
   /// Returns `ALREADY_EXISTS` (409) if [to] already exists.
-  Future<Result<void>> copy(
-    String alias,
-    String from,
-    String to,
-  ) async {
+  Future<Result<void>> copy(String alias, String from, String to) async {
     final uri = Uri.parse('$baseUrl/roots/$alias/copy');
     try {
       final res = await _http.post(
@@ -371,17 +422,16 @@ class FileClient {
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   Map<String, String> _authHeaders() => {
-        'authorization': 'Bearer $sessionToken',
-      };
+    'authorization': 'Bearer $sessionToken',
+  };
 
   Map<String, String> _jsonAuthHeaders() => {
-        'authorization': 'Bearer $sessionToken',
-        'content-type': 'application/json',
-      };
+    'authorization': 'Bearer $sessionToken',
+    'content-type': 'application/json',
+  };
 
   /// Extracts a typed [Err] from a non-2xx HTTP response body.
-  Err<T> _errFromBody<T>(http.Response res) =>
-      _errFromResponse<T>(res);
+  Err<T> _errFromBody<T>(http.Response res) => _errFromResponse<T>(res);
 
   static Err<T> _errFromResponse<T>(http.Response res) {
     try {
@@ -404,6 +454,12 @@ class PairData {
   final FileClient client;
   final String sessionToken;
 
+  /// Persistent device token (for reconnecting without re-pairing).
+  final String deviceToken;
+
+  /// Stable device id issued by the host.
+  final String deviceId;
+
   /// The role assigned to this session by the host ('viewer'|'editor'|'owner').
   final String role;
 
@@ -411,6 +467,8 @@ class PairData {
     required this.client,
     required this.sessionToken,
     required this.role,
+    this.deviceToken = '',
+    this.deviceId = '',
   });
 }
 
@@ -434,12 +492,12 @@ class FileEntry {
   bool get isFile => kind == 'file';
 
   factory FileEntry.fromJson(Map<String, dynamic> json) => FileEntry(
-        name: json['name'] as String,
-        path: json['path'] as String,
-        kind: json['kind'] as String,
-        size: json['size'] as int? ?? 0,
-        modifiedAt: DateTime.parse(json['modifiedAt'] as String),
-      );
+    name: json['name'] as String,
+    path: json['path'] as String,
+    kind: json['kind'] as String,
+    size: json['size'] as int? ?? 0,
+    modifiedAt: DateTime.parse(json['modifiedAt'] as String),
+  );
 }
 
 /// Metadata for a single file (includes the conflict-detection token).
@@ -457,14 +515,13 @@ class FileMetadata {
   });
 
   factory FileMetadata.fromJson(Map<String, dynamic> json) => FileMetadata(
-        path: json['path'] as String? ?? '',
-        size: json['size'] as int? ?? 0,
-        modifiedAt: DateTime.parse(
-          json['modifiedAt'] as String? ??
-              DateTime.now().toIso8601String(),
-        ),
-        versionToken: json['versionToken'] as String,
-      );
+    path: json['path'] as String? ?? '',
+    size: json['size'] as int? ?? 0,
+    modifiedAt: DateTime.parse(
+      json['modifiedAt'] as String? ?? DateTime.now().toIso8601String(),
+    ),
+    versionToken: json['versionToken'] as String,
+  );
 }
 
 /// A single item result inside a batch operation response.
@@ -484,15 +541,15 @@ class BatchResult {
 
   /// For batch/delete responses where the key field is `path`.
   factory BatchResult.fromDeleteJson(Map<String, dynamic> json) => BatchResult(
-        key: json['path'] as String,
-        status: json['status'] as int,
-        message: json['message'] as String,
-      );
+    key: json['path'] as String,
+    status: json['status'] as int,
+    message: json['message'] as String,
+  );
 
   /// For batch/move and batch/copy responses where the key field is `item`.
   factory BatchResult.fromItemJson(Map<String, dynamic> json) => BatchResult(
-        key: json['item'] as String,
-        status: json['status'] as int,
-        message: json['message'] as String,
-      );
+    key: json['item'] as String,
+    status: json['status'] as int,
+    message: json['message'] as String,
+  );
 }

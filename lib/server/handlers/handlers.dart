@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -11,6 +12,7 @@ import '../roots/root_registry.dart';
 import '../auth/auth_middleware.dart';
 import '../../core/result.dart';
 import '../../core/host_identity.dart';
+import '../../core/trusted_client_store.dart';
 import '../activity/activity_log.dart';
 import '../../models/role.dart';
 
@@ -46,13 +48,48 @@ Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
 
     final deviceName = body['deviceName'] as String?;
     final fingerprint = body['devicePublicKey'] as String? ?? '';
+    final incomingDeviceId = body['deviceId'] as String?;
     final secret = body['pairingSecret'] as String?;
 
-    if (deviceName == null || secret == null) {
+    if (deviceName == null) {
+      return _error(400, 'INVALID_ARGUMENT', 'deviceName is required');
+    }
+
+    // ── Auto-approve: known device reconnecting ──────────────────────────
+    // Match by deviceId first, then fingerprint as fallback.
+    TrustedClient? trusted;
+    if (incomingDeviceId != null && incomingDeviceId.isNotEmpty) {
+      trusted = await TrustedClientStore.findById(incomingDeviceId);
+    }
+    if (trusted == null && fingerprint.isNotEmpty) {
+      trusted = await TrustedClientStore.findByFingerprint(fingerprint);
+    }
+
+    final defaultRole = roots.highestMinimumRole;
+    final requestId = _uuid.v4();
+
+    if (trusted != null) {
+      // Reuse the stored deviceId so the host can track it correctly.
+      _pendingRequests[requestId] = PairRequest(
+        id: requestId,
+        deviceName: deviceName,
+        fingerprint: fingerprint,
+        ip: ip,
+        role: trusted.role,
+        existingDeviceId: trusted.deviceId,
+      )..approved = true;
+      return Response.ok(
+        jsonEncode({'pairRequestId': requestId, 'approval': 'auto'}),
+        headers: _json,
+      );
+    }
+
+    // ── New device: require pairing secret ───────────────────────────────
+    if (secret == null) {
       return _error(
         400,
         'INVALID_ARGUMENT',
-        'deviceName and pairingSecret are required',
+        'pairingSecret is required for new devices',
       );
     }
 
@@ -62,8 +99,6 @@ Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
       return _error(status, err, 'Pairing validation failed: $err');
     }
 
-    final defaultRole = roots.highestMinimumRole;
-    final requestId = _uuid.v4();
     _pendingRequests[requestId] = PairRequest(
       id: requestId,
       deviceName: deviceName,
@@ -98,12 +133,33 @@ Handler pairCompleteHandler(TokenStore tokens) {
       );
     }
 
+    // Reuse existing deviceId for returning clients, or mint a new one.
+    final deviceId = pending.existingDeviceId ?? _uuid.v4();
+
     final result = tokens.issue(
-      deviceId: _uuid.v4(),
+      deviceId: deviceId,
       deviceName: pending.deviceName,
       publicKeyFingerprint: pending.fingerprint,
       role: pending.role,
     );
+
+    // Persist the client as trusted so it can reconnect without a code.
+    // Pairing should still succeed if persistence is temporarily unavailable.
+    unawaited(() async {
+      try {
+        await TrustedClientStore.upsert(
+          TrustedClient(
+            deviceId: deviceId,
+            deviceName: pending.deviceName,
+            publicKeyFingerprint: pending.fingerprint,
+            role: pending.role,
+            pairedAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {
+        // Best-effort persistence.
+      }
+    }());
 
     // Consume request after successful completion.
     _pendingRequests.remove(requestId);
@@ -113,6 +169,7 @@ Handler pairCompleteHandler(TokenStore tokens) {
         'sessionToken': result.sessionToken,
         'expiresAt': result.expiresAt.toUtc().toIso8601String(),
         'deviceToken': result.deviceToken,
+        'deviceId': deviceId,
         'role': pending.role.name,
       }),
       headers: _json,
@@ -148,10 +205,7 @@ Handler tokenRefreshHandler(TokenStore tokens) {
 Handler sessionInfoHandler() {
   return (Request request) {
     final role = roleOf(request);
-    return Response.ok(
-      jsonEncode({'role': role.name}),
-      headers: _json,
-    );
+    return Response.ok(jsonEncode({'role': role.name}), headers: _json);
   };
 }
 
@@ -380,12 +434,16 @@ class PairRequest {
   bool approved = false;
   Role role;
 
+  /// If set, reuse this deviceId (returning client) instead of minting a new one.
+  final String? existingDeviceId;
+
   PairRequest({
     required this.id,
     required this.deviceName,
     required this.fingerprint,
     required this.ip,
     this.role = Role.viewer,
+    this.existingDeviceId,
   });
 }
 

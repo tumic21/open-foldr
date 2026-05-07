@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../core/client_credential_store.dart';
 import '../../../discovery/mdns_scanner.dart';
 import '../../../core/constants.dart';
 import 'explorer_screen.dart';
@@ -21,7 +24,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final _portController = TextEditingController(
     text: '${AppConstants.defaultPort}',
   );
-  final _secretController = TextEditingController();
 
   @override
   void initState() {
@@ -34,7 +36,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     _keepScanning = false;
     _ipController.dispose();
     _portController.dispose();
-    _secretController.dispose();
     super.dispose();
   }
 
@@ -62,29 +63,16 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   void _connectManual() {
     final ip = _ipController.text.trim();
     final port = int.tryParse(_portController.text.trim());
-    final secret = _secretController.text.trim();
-    if (ip.isEmpty || port == null || secret.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('IP, port, and pairing code are required'),
-        ),
-      );
+    if (ip.isEmpty || port == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('IP and port are required')));
       return;
     }
-    _keepScanning = false;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            ExplorerScreen(hostAddress: ip, port: port, pairingSecret: secret),
-      ),
-    );
-  }
-
-  void _connectDiscovered(DiscoveredHost host) {
+    // For manual connect we don't have the hostId yet, so open pairing dialog.
     showDialog<String>(
       context: context,
-      builder: (_) => _PairingDialog(hostName: host.name),
+      builder: (_) => _PairingDialog(hostName: ip),
     ).then((secret) {
       if (secret == null || secret.isEmpty) return;
       _keepScanning = false;
@@ -92,12 +80,55 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => ExplorerScreen(
-            hostAddress: host.address,
-            port: host.port,
+            hostAddress: ip,
+            port: port,
             pairingSecret: secret,
+            // hostId unknown for manual connect; will be discovered on connect.
           ),
         ),
       );
+    });
+  }
+
+  void _connectDiscovered(DiscoveredHost host) {
+    // Check if we already have credentials for this host.
+    ClientCredentialStore.find(host.hostId).then((cred) {
+      if (!mounted) return;
+      if (cred != null) {
+        // Known host — connect silently (ExplorerScreen will use stored token).
+        _keepScanning = false;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ExplorerScreen(
+              hostAddress: host.address,
+              port: host.port,
+              pairingSecret: '',
+              hostId: host.hostId,
+            ),
+          ),
+        );
+        return;
+      }
+      // Unknown host — ask for pairing code.
+      showDialog<String>(
+        context: context,
+        builder: (_) => _PairingDialog(hostName: host.name),
+      ).then((secret) {
+        if (secret == null || secret.isEmpty) return;
+        _keepScanning = false;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ExplorerScreen(
+              hostAddress: host.address,
+              port: host.port,
+              pairingSecret: secret,
+              hostId: host.hostId,
+            ),
+          ),
+        );
+      });
     });
   }
 
@@ -187,15 +218,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 8),
-          TextField(
-            controller: _secretController,
-            decoration: const InputDecoration(
-              labelText: 'Pairing code',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-          ),
-          const SizedBox(height: 12),
           FilledButton(onPressed: _connectManual, child: const Text('Connect')),
         ],
       ),
