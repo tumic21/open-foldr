@@ -667,6 +667,49 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
+  Future<void> _downloadSelected() async {
+    final byPath = {for (final e in _state.entries) e.path: e};
+    final selected = _state.selectedPaths
+        .map((path) => byPath[path])
+        .whereType<FileEntry>()
+        .toList(growable: false);
+
+    if (selected.isEmpty) return;
+
+    final files = selected.where((e) => e.isFile).toList(growable: false);
+    final skippedDirs = selected.length - files.length;
+
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selected items are folders. Folder download is not supported yet.'),
+        ),
+      );
+      return;
+    }
+
+    _state.clearSelection();
+
+    if (skippedDirs > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Downloading ${files.length} file(s). Skipped $skippedDirs folder(s).',
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Downloading ${files.length} file(s)...')),
+      );
+    }
+
+    for (final file in files) {
+      if (!mounted) return;
+      await _downloadFile(file.path, file.name);
+    }
+  }
+
   Future<bool> _confirmBinaryDownload(FileEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1257,6 +1300,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             tooltip: 'Select all',
             onPressed: _state.selectAll,
           ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Download selected',
+            onPressed: _downloadSelected,
+          ),
           if (_canDelete)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
@@ -1630,6 +1678,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            IconButton(
+              icon: const Icon(Icons.download),
+              tooltip: 'Download selected',
+              onPressed: _downloadSelected,
+            ),
             IconButton(
               icon: const Icon(Icons.copy),
               tooltip: 'Copy',

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/constants.dart';
 import '../../../core/host_identity.dart';
 import '../../../core/session_store.dart';
@@ -83,6 +84,7 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   void initState() {
     super.initState();
+    WakelockPlus.enable();
     _renewPairingSecret();
     _loadHostIp();
     _loadTrustedClients();
@@ -191,6 +193,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   @override
   void dispose() {
+    WakelockPlus.disable();
     _expiryTimer?.cancel();
     _trustedRefreshTimer?.cancel();
     widget.server.stop();
@@ -285,8 +288,9 @@ class _SessionScreenState extends State<SessionScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
           // Security status bar
           Container(
             color: Colors.green.shade50,
@@ -514,34 +518,38 @@ class _SessionScreenState extends State<SessionScreen> {
           const Divider(),
 
           // Activity log
-          Expanded(
-            child: _events.isEmpty
-                ? const Center(child: Text('No activity yet'))
-                : ListView.builder(
-                    itemCount: _events.length,
-                    itemBuilder: (_, i) {
-                      final e = _events[i];
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.history, size: 18),
-                        title: Text(
-                          '${e.deviceName}: ${e.operation} ${e.path}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+          _events.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: Text('No activity yet')),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _events.length,
+                  itemBuilder: (_, i) {
+                    final e = _events[i];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.history, size: 18),
+                      title: Text(
+                        '${e.deviceName}: ${e.operation} ${e.path}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(e.timestamp.toLocal().toString()),
+                      trailing: Text(
+                        e.result,
+                        style: TextStyle(
+                          color: e.result == 'ok' ? Colors.green : Colors.red,
+                          fontSize: 12,
                         ),
-                        subtitle: Text(e.timestamp.toLocal().toString()),
-                        trailing: Text(
-                          e.result,
-                          style: TextStyle(
-                            color: e.result == 'ok' ? Colors.green : Colors.red,
-                            fontSize: 12,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
+                      ),
+                    );
+                  },
+                ),
         ],
+        ),
       ),
     );
   }

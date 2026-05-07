@@ -45,6 +45,10 @@ class TrustedClient {
 class TrustedClientStore {
   static const _prefsKey = 'trusted_clients';
 
+  static String _encodeClients(List<TrustedClient> clients) {
+    return jsonEncode(clients.map((c) => c.toJson()).toList());
+  }
+
   static File _storageFile() {
     final isTest =
         Platform.environment.containsKey('FLUTTER_TEST') ||
@@ -103,33 +107,39 @@ class TrustedClientStore {
             .map((e) => TrustedClient.fromJson(e as Map<String, dynamic>))
             .toList();
       }
-
-      // One-time migration from legacy SharedPreferences storage.
-      final migrated = await _loadFromPrefs();
-      if (migrated.isNotEmpty) {
-        await save(migrated);
-      }
-      return migrated;
     } catch (_) {
-      return [];
+      // Fall through to preference fallback.
     }
+
+    // Fallback + one-time migration path.
+    final migrated = await _loadFromPrefs();
+    if (migrated.isNotEmpty) {
+      try {
+        await file.parent.create(recursive: true);
+        await file.writeAsString(_encodeClients(migrated), flush: true);
+      } catch (_) {
+        // Ignore file migration failures on constrained platforms.
+      }
+    }
+    return migrated;
   }
 
   static Future<void> save(List<TrustedClient> clients) async {
     final file = _storageFile();
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode(clients.map((c) => c.toJson()).toList()),
-      flush: true,
-    );
+    final encoded = _encodeClients(clients);
+
+    // Prefer file storage, but don't fail the overall save if this errors.
+    try {
+      await file.parent.create(recursive: true);
+      await file.writeAsString(encoded, flush: true);
+    } catch (_) {
+      // Ignore file write failures and keep prefs as durable fallback.
+    }
 
     // Keep legacy storage best-effort for compatibility.
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _prefsKey,
-        jsonEncode(clients.map((c) => c.toJson()).toList()),
-      );
+      await prefs.setString(_prefsKey, encoded);
     } catch (_) {
       // Ignore preference write failures.
     }
