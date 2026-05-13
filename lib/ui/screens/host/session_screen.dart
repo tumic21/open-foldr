@@ -31,6 +31,8 @@ class _SessionScreenState extends State<SessionScreen> {
   Timer? _trustedRefreshTimer;
   List<TrustedClient> _trustedClients = [];
   String _hostIp = 'Detecting...';
+  List<String> _hostIpAddresses = const [];
+  bool _showAllHostIps = false;
 
   InlineSpan get _roleTooltipMessage => TextSpan(
     style: const TextStyle(color: Colors.white, height: 1.5),
@@ -109,6 +111,10 @@ class _SessionScreenState extends State<SessionScreen> {
           .where((a) => !a.isLoopback)
           .toList();
 
+      final uniqueAddresses = <String>{
+        for (final address in allAddresses) address.address,
+      }.toList();
+
       final ipv4 = allAddresses.firstWhere(
         (a) => a.type == InternetAddressType.IPv4,
         orElse: () => allAddresses.isNotEmpty
@@ -117,10 +123,20 @@ class _SessionScreenState extends State<SessionScreen> {
       );
 
       if (!mounted) return;
-      setState(() => _hostIp = ipv4.address);
+      setState(() {
+        _hostIp = ipv4.address;
+        _hostIpAddresses = uniqueAddresses;
+        if (_hostIpAddresses.length <= 1) {
+          _showAllHostIps = false;
+        }
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _hostIp = 'Unavailable');
+      setState(() {
+        _hostIp = 'Unavailable';
+        _hostIpAddresses = const [];
+        _showAllHostIps = false;
+      });
     }
   }
 
@@ -329,15 +345,124 @@ class _SessionScreenState extends State<SessionScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Host IP: $_hostIp',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Host IP: $_hostIp',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (_hostIpAddresses.length > 1) ...[
+                          const SizedBox(width: 4),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                            tooltip: _showAllHostIps
+                                ? 'Hide all IP addresses'
+                                : 'Show all IP addresses',
+                            icon: Icon(
+                              _showAllHostIps ? Icons.remove : Icons.add,
+                              size: 18,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _showAllHostIps = !_showAllHostIps;
+                              });
+                            },
+                          ),
+                        ],
+                      ],
                     ),
+                    if (_showAllHostIps && _hostIpAddresses.length > 1) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.shade100,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'All IP addresses',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _hostIpAddresses.map(
+                                (ip) => GestureDetector(
+                                  onTap: () {
+                                    Clipboard.setData(ClipboardData(text: ip));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Copied: $ip'),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.blue.shade200,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      ip,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black87,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ).toList(),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Click any address to copy',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     const Text(
                       'Pairing Code',
