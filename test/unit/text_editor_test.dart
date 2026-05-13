@@ -372,6 +372,46 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets('can close without prompt when content is unchanged', (
+      tester,
+    ) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => TextEditorScreen(
+                      client: _makeClient(),
+                      alias: 'docs',
+                      remotePath: '/test.txt',
+                      fileName: 'test.txt',
+                      fileSize: 100,
+                      canWrite: true,
+                    ),
+                  ));
+                },
+                child: const Text('Open editor'),
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextEditorScreen), findsOneWidget);
+      expect(find.text('Unsaved changes'), findsNothing);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unsaved changes'), findsNothing);
+      expect(find.text('Open editor'), findsOneWidget);
+    });
   });
 
   // ── _isTextFile routing ─────────────────────────────────────────────────

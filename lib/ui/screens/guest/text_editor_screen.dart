@@ -120,6 +120,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   bool _loading = true;
   String? _loadError;
   String? _versionToken;
+  String _savedText = '';
   bool _isDirty = false;
   bool _darkTheme = true;
   bool _themeInitialized = false;
@@ -205,17 +206,20 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
 
     setState(() {
       _loading = false;
+      _savedText = text;
       _isDirty = false;
     });
   }
 
   void _onTextChanged() {
-    if (!_isDirty && mounted) {
-      // Schedule the state update after the current build is complete.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _isDirty = true);
-      });
-    }
+    if (!mounted) return;
+    final nextDirty = _editingController.text != _savedText;
+    if (_isDirty == nextDirty) return;
+
+    // Schedule the state update after the current build is complete.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _isDirty = nextDirty);
+    });
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -234,7 +238,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
 
     if (result.isOk) {
       _versionToken = result.unwrap;
-      setState(() => _isDirty = false);
+      setState(() {
+        _savedText = text;
+        _isDirty = false;
+      });
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Saved')));
       return;
@@ -277,7 +284,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         );        if (!mounted) return;
         if (force.isOk) {
           _versionToken = force.unwrap;
-          setState(() => _isDirty = false);
+          setState(() {
+            _savedText = utf8.decode(bytes);
+            _isDirty = false;
+          });
           ScaffoldMessenger.of(context)
               .showSnackBar(const SnackBar(content: Text('Saved (overwrite)')));
         }
