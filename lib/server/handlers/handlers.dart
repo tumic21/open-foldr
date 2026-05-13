@@ -134,11 +134,10 @@ Handler pairCompleteHandler(TokenStore tokens, RootRegistry roots) {
 
     // Reuse existing deviceId for returning clients, or mint a new one.
     final deviceId = pending.existingDeviceId ?? _uuid.v4();
-    final rootConfiguredRole = roots.highestMinimumRole;
     final existingRole = pending.existingDeviceId == null
         ? null
         : tokens.roleForDevice(pending.existingDeviceId!);
-    final effectiveRole = existingRole ?? rootConfiguredRole;
+    final effectiveRole = existingRole ?? pending.role;
 
     final result = tokens.issue(
       deviceId: deviceId,

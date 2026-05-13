@@ -12,17 +12,19 @@ void main() {
   late Directory tempDir;
   const port = 17433;
   const base = 'http://127.0.0.1:$port/v1';
+  var _pairCounter = 0;
 
   // Helper: pair and return a session token with the given role.
   Future<String> pairAs(Role role) async {
+    final pairId = _pairCounter++;
     final secret = server.pairing.generateSecret();
 
     final reqRes = await http.post(
       Uri.parse('$base/auth/pair/request'),
       headers: {'content-type': 'application/json'},
       body: jsonEncode({
-        'deviceName': 'WriteTestClient',
-        'devicePublicKey': '',
+        'deviceName': 'WriteTestClient-$pairId-${role.name}',
+        'devicePublicKey': 'write-test-fp-$pairId-${role.name}',
         'pairingSecret': secret,
       }),
     );
