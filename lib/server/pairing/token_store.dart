@@ -154,6 +154,14 @@ class TokenStore {
         .toList();
   }
 
+  /// Returns the currently configured role for a paired device, if present.
+  Role? roleForDevice(String deviceId) {
+    for (final device in _devices.values) {
+      if (device.deviceId == deviceId) return device.role;
+    }
+    return null;
+  }
+
   void syncAllRoles(Role role) {
     for (final session in _sessions.values) {
       session.role = role;

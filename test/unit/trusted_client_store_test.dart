@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:open_foldr/core/trusted_client_store.dart';
-import 'package:open_foldr/models/role.dart';
 
 void main() {
   setUp(() async {
@@ -12,12 +11,10 @@ void main() {
       String deviceId = 'device-1',
       String deviceName = 'Phone',
       String fingerprint = 'fp-001',
-      Role role = Role.viewer,
     }) => TrustedClient(
       deviceId: deviceId,
       deviceName: deviceName,
       publicKeyFingerprint: fingerprint,
-      role: role,
       pairedAt: DateTime.utc(2024, 1, 1),
     );
 
@@ -34,20 +31,18 @@ void main() {
       expect(loaded.length, 1);
       expect(loaded.first.deviceId, client.deviceId);
       expect(loaded.first.deviceName, client.deviceName);
-      expect(loaded.first.role, client.role);
     });
 
     test('upsert updates existing client by deviceId', () async {
-      final original = _makeClient(deviceName: 'Phone v1', role: Role.viewer);
+      final original = _makeClient(deviceName: 'Phone v1');
       await TrustedClientStore.upsert(original);
 
-      final updated = _makeClient(deviceName: 'Phone v2', role: Role.editor);
+      final updated = _makeClient(deviceName: 'Phone v2');
       await TrustedClientStore.upsert(updated);
 
       final loaded = await TrustedClientStore.load();
       expect(loaded.length, 1);
       expect(loaded.first.deviceName, 'Phone v2');
-      expect(loaded.first.role, Role.editor);
     });
 
     test('remove deletes a client by deviceId', () async {

@@ -43,7 +43,7 @@ class OpenFoldrServer {
     final router = Router()
       ..get('/v1/health', healthHandler())
       ..post('/v1/auth/pair/request', pairRequestHandler(pairing, roots))
-      ..post('/v1/auth/pair/complete', pairCompleteHandler(tokens))
+      ..post('/v1/auth/pair/complete', pairCompleteHandler(tokens, roots))
       ..post('/v1/auth/token/refresh', tokenRefreshHandler(tokens))
       ..get('/v1/session', sessionInfoHandler())
       ..get('/v1/roots', rootsListHandler(roots))

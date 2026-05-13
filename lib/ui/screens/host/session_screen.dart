@@ -627,7 +627,7 @@ class _SessionScreenState extends State<SessionScreen> {
                       : c.deviceName,
                 ),
                 subtitle: Text(
-                  'ID: ${c.deviceId} · Role: ${c.role.displayName} · Paired ${_formatDate(c.pairedAt)}',
+                  'ID: ${c.deviceId} · Paired ${_formatDate(c.pairedAt)}',
                 ),
                 trailing: IconButton(
                   icon: const Icon(

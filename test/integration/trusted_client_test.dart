@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_foldr/core/trusted_client_store.dart';
-import 'package:open_foldr/models/role.dart';
 import 'package:open_foldr/server/server.dart';
 
 void main() {
@@ -87,7 +86,6 @@ void main() {
           deviceId: deviceId,
           deviceName: 'Phone',
           publicKeyFingerprint: 'fp-phone-1',
-          role: Role.viewer,
           pairedAt: DateTime.now(),
         ),
       );
@@ -131,7 +129,6 @@ void main() {
           deviceId: deviceId,
           deviceName: 'Tablet',
           publicKeyFingerprint: fingerprint,
-          role: Role.viewer,
           pairedAt: DateTime.now(),
         ),
       );

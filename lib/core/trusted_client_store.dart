@@ -3,21 +3,17 @@ import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/role.dart';
-
 /// A client that has been approved by the host and persisted across sessions.
 class TrustedClient {
   final String deviceId;
   final String deviceName;
   final String publicKeyFingerprint;
-  final Role role;
   final DateTime pairedAt;
 
   const TrustedClient({
     required this.deviceId,
     required this.deviceName,
     required this.publicKeyFingerprint,
-    required this.role,
     required this.pairedAt,
   });
 
@@ -25,7 +21,6 @@ class TrustedClient {
     'deviceId': deviceId,
     'deviceName': deviceName,
     'publicKeyFingerprint': publicKeyFingerprint,
-    'role': role.name,
     'pairedAt': pairedAt.toUtc().toIso8601String(),
   };
 
@@ -33,10 +28,6 @@ class TrustedClient {
     deviceId: j['deviceId'] as String,
     deviceName: j['deviceName'] as String,
     publicKeyFingerprint: j['publicKeyFingerprint'] as String? ?? '',
-    role: Role.values.firstWhere(
-      (r) => r.name == j['role'],
-      orElse: () => Role.viewer,
-    ),
     pairedAt: DateTime.parse(j['pairedAt'] as String),
   );
 }
@@ -158,7 +149,7 @@ class TrustedClientStore {
     }
   }
 
-  /// Upsert a trusted client by deviceId (update role/name if already stored).
+  /// Upsert a trusted client by deviceId (update metadata if already stored).
   static Future<void> upsert(TrustedClient client) async {
     final list = await load();
     final idx = list.indexWhere((c) => c.deviceId == client.deviceId);

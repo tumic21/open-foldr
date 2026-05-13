@@ -74,7 +74,7 @@ Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
         deviceName: deviceName,
         fingerprint: fingerprint,
         ip: ip,
-        role: trusted.role,
+        role: defaultRole,
         existingDeviceId: trusted.deviceId,
       )..approved = true;
       return Response.ok(
@@ -113,7 +113,7 @@ Handler pairRequestHandler(PairingManager pairing, RootRegistry roots) {
   };
 }
 
-Handler pairCompleteHandler(TokenStore tokens) {
+Handler pairCompleteHandler(TokenStore tokens, RootRegistry roots) {
   return (Request request) async {
     final body = await _parseJson(request);
     if (body == null) return _error(400, 'INVALID_ARGUMENT', 'Invalid JSON');
@@ -134,12 +134,17 @@ Handler pairCompleteHandler(TokenStore tokens) {
 
     // Reuse existing deviceId for returning clients, or mint a new one.
     final deviceId = pending.existingDeviceId ?? _uuid.v4();
+    final rootConfiguredRole = roots.highestMinimumRole;
+    final existingRole = pending.existingDeviceId == null
+        ? null
+        : tokens.roleForDevice(pending.existingDeviceId!);
+    final effectiveRole = existingRole ?? rootConfiguredRole;
 
     final result = tokens.issue(
       deviceId: deviceId,
       deviceName: pending.deviceName,
       publicKeyFingerprint: pending.fingerprint,
-      role: pending.role,
+      role: effectiveRole,
     );
 
     // Persist the client as trusted so it can reconnect without a code.
@@ -151,7 +156,6 @@ Handler pairCompleteHandler(TokenStore tokens) {
           deviceId: deviceId,
           deviceName: pending.deviceName,
           publicKeyFingerprint: pending.fingerprint,
-          role: pending.role,
           pairedAt: DateTime.now(),
         ),
       );
@@ -168,7 +172,7 @@ Handler pairCompleteHandler(TokenStore tokens) {
         'expiresAt': result.expiresAt.toUtc().toIso8601String(),
         'deviceToken': result.deviceToken,
         'deviceId': deviceId,
-        'role': pending.role.name,
+        'role': effectiveRole.name,
       }),
       headers: _json,
     );
