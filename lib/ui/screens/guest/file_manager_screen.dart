@@ -23,6 +23,7 @@ import '../../widgets/file_manager/file_list_tile.dart';
 import '../../widgets/file_manager/sort_menu.dart';
 import '../../widgets/file_manager/upload_progress_overlay.dart';
 import '../../widgets/file_manager/view_mode_toggle.dart';
+import 'desktop_pdf_opener.dart';
 import 'file_preview_screen.dart';
 import 'image_preview_screen.dart';
 import 'pdf_preview_screen.dart';
@@ -306,6 +307,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   Timer? _roleRefreshTimer;
 
   WatchClient? _watcher;
+  final DesktopPdfOpener _desktopPdfOpener = DesktopPdfOpener();
   final Map<String, UploadProgressItem> _uploadProgress = {};
   final Map<String, UploadProgressItem> _downloadProgress = {};
   final Map<String, _DownloadControlState> _downloadControls = {};
@@ -664,6 +666,27 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
           });
         });
       }
+    }
+  }
+
+  Future<void> _openDesktopPdf(FileEntry entry) async {
+    final result = await widget.client.downloadFile(widget.alias, entry.path);
+    if (!mounted) return;
+
+    if (result.isErr) {
+      _showError(result.errorMessage);
+      return;
+    }
+
+    try {
+      await _desktopPdfOpener.openPdf(result.unwrap, entry.name);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Opened PDF in the system viewer.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _showError('Could not open PDF file.');
     }
   }
 
@@ -1648,6 +1671,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (_isPdfFile(entry.name)) {
       widget.onOpenFile?.call('pdf', entry);
       if (widget.onOpenFile != null) return;
+      if (_isDesktop) {
+        unawaited(_openDesktopPdf(entry));
+        return;
+      }
       Navigator.push(
         context,
         MaterialPageRoute(

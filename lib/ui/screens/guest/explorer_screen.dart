@@ -255,7 +255,7 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 return ListTile(
                   leading: const Icon(Icons.folder_shared),
                   title: Text(root['alias'] as String),
-                  subtitle: Text('Requires at least: ${root['minimumRole']}'),
+                  subtitle: Text('${root['minimumRole']}'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () => _openRoot(root['alias'] as String),
                 );
