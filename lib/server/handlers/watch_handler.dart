@@ -44,9 +44,8 @@ Handler watchHandler(RootRegistry registry) {
 /// Usage: register with the shelf router as
 /// `..get('/v1/roots/<alias>/watch', watchRouteHandler(registry, tokens))`
 ///
-/// Authentication: accepts either the standard `Authorization: Bearer <token>`
-/// header OR a `token=<value>` query parameter (for WebSocket clients that
-/// cannot send custom headers).
+/// Authentication: uses the standard `Authorization: Bearer <token>` header
+/// sent in the WebSocket upgrade request, validated by bearerAuthMiddleware.
 Handler watchRouteHandler(RootRegistry registry, TokenStore tokens) {
   return (Request request) async {
     final alias = request.params['alias']!;
@@ -58,21 +57,11 @@ Handler watchRouteHandler(RootRegistry registry, TokenStore tokens) {
       );
     }
 
-    // Resolve auth: accept Bearer header (set by middleware) OR query-param
-    // token (for WebSocket clients that cannot send custom headers).
-    //
-    // The middleware has already validated the Bearer header if present.
-    // Here we additionally accept a ?token= query param so that clients
-    // connecting via WebSocket (which cannot set custom headers on all
-    // platforms) can authenticate.
-    bool authenticated = request.context.containsKey('role');
-    final queryToken = request.url.queryParameters['token'];
-    if (!authenticated && queryToken != null && queryToken.isNotEmpty) {
-      final resolvedRole = tokens.validate(queryToken);
-      if (resolvedRole != null) {
-        authenticated = true;
-      }
-    }
+    // Authentication is enforced by the bearerAuthMiddleware before this
+    // handler is called. The middleware validates the Authorization: Bearer
+    // header (sent in the WebSocket upgrade request) and sets 'role' in the
+    // request context if the token is valid.
+    final authenticated = request.context.containsKey('role');
 
     if (!authenticated) {
       return Response(401,

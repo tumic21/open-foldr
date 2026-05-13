@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/backoff.dart';
@@ -69,12 +70,13 @@ class WatchClient {
   /// Builds the WebSocket [Uri] for this client's current parameters.
   ///
   /// Converts `http(s)://` to `ws(s)://` and appends query parameters.
+  /// Note: token is sent via Authorization header, not query parameter.
   Uri buildWsUri() {
     final wsBase = baseUrl
         .replaceFirst(RegExp(r'^http://'), 'ws://')
         .replaceFirst(RegExp(r'^https://'), 'wss://');
     return Uri.parse(
-        '$wsBase/roots/$alias/watch?path=${Uri.encodeComponent(watchPath)}&token=${Uri.encodeComponent(sessionToken)}');
+        '$wsBase/roots/$alias/watch?path=${Uri.encodeComponent(watchPath)}');
   }
 
   /// Establishes (or re-establishes) the WebSocket connection.
@@ -85,9 +87,9 @@ class WatchClient {
     final uri = buildWsUri();
 
     try {
-      final channel = WebSocketChannel.connect(
+      final channel = IOWebSocketChannel.connect(
         uri,
-        protocols: const [],
+        headers: {'authorization': 'Bearer $sessionToken'},
       );
       _channel = channel;
 
@@ -96,15 +98,11 @@ class WatchClient {
         _scheduleReconnect();
       }));
 
-      // Authenticate via sub-protocol is not used; instead pass the token as
-      // a query param isn't ideal.  shelf_web_socket supports header-based
-      // auth on the upgrade request, but WebSocketChannel.connect on Flutter
-      // doesn't allow custom headers on all platforms.  We rely on the outer
-      // middleware having already verified the token via a prior HTTP call,
-      // and use a query-param token approach for the WS upgrade.
-      //
-      // Reconnect after opening: send a lightweight ping to authenticate.
-      // The server will close with 4401 if token is invalid.
+      // Authentication is sent via Authorization: Bearer header in the
+      // WebSocket upgrade request. This is more secure than query parameters,
+      // as headers are not logged, cached, or passed through proxies as plaintext.
+      // The server's bearerAuthMiddleware validates the token before the
+      // upgrade completes; connection fails if token is invalid/expired.
 
       _sub = channel.stream.listen(
         (data) {
