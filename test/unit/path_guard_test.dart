@@ -50,6 +50,26 @@ void main() {
       expect(result.isOk, isTrue);
       expect(result.unwrap, contains(p.join(tempDir.path, 'a', 'b')));
     });
+
+    test('rejects path that escapes root via symlink', () {
+      if (Platform.isWindows) {
+        // Symlink creation is not reliable on CI Windows without admin mode.
+        return;
+      }
+
+      final inside = Directory(p.join(tempDir.path, 'inside'))
+        ..createSync(recursive: true);
+      final outside = Directory.systemTemp.createTempSync('path_guard_out_');
+
+      try {
+        Link(p.join(inside.path, 'out')).createSync(outside.path);
+        final result = guard.resolve('inside/out/secret.txt');
+        expect(result.isErr, isTrue);
+        expect(result.errorCode, 'INVALID_ARGUMENT');
+      } finally {
+        outside.deleteSync(recursive: true);
+      }
+    });
   });
 
   group('PathGuard.isWithinRoot', () {

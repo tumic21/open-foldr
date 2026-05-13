@@ -50,11 +50,47 @@ class PathGuard {
 
   static String _canonicalize(String path) {
     try {
-      final real = File(path).absolute.path;
+      final absolute = p.normalize(File(path).absolute.path);
+      final type = FileSystemEntity.typeSync(absolute, followLinks: false);
+      final real = switch (type) {
+        FileSystemEntityType.directory => Directory(
+          absolute,
+        ).resolveSymbolicLinksSync(),
+        FileSystemEntityType.file => File(absolute).resolveSymbolicLinksSync(),
+        FileSystemEntityType.link => Link(absolute).resolveSymbolicLinksSync(),
+        _ => _resolveExistingAncestor(absolute),
+      };
       // Normalize separators and remove trailing slash.
       return p.normalize(real).replaceAll(RegExp(r'[/\\]+$'), '');
     } catch (_) {
       return p.normalize(path).replaceAll(RegExp(r'[/\\]+$'), '');
     }
+  }
+
+  static String _resolveExistingAncestor(String absolutePath) {
+    var cursor = absolutePath;
+    final suffix = <String>[];
+
+    while (FileSystemEntity.typeSync(cursor, followLinks: false) ==
+      FileSystemEntityType.notFound) {
+      final parent = p.dirname(cursor);
+      if (parent == cursor) {
+        return absolutePath;
+      }
+      suffix.insert(0, p.basename(cursor));
+      cursor = parent;
+    }
+
+    final type = FileSystemEntity.typeSync(cursor, followLinks: false);
+    final resolvedBase = switch (type) {
+      FileSystemEntityType.directory => Directory(
+        cursor,
+      ).resolveSymbolicLinksSync(),
+      FileSystemEntityType.file => File(cursor).resolveSymbolicLinksSync(),
+      FileSystemEntityType.link => Link(cursor).resolveSymbolicLinksSync(),
+      _ => cursor,
+    };
+
+    return suffix.isEmpty ? resolvedBase : p.joinAll([resolvedBase, ...suffix]);
   }
 }
