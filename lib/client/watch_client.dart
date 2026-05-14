@@ -70,13 +70,14 @@ class WatchClient {
   /// Builds the WebSocket [Uri] for this client's current parameters.
   ///
   /// Converts `http(s)://` to `ws(s)://` and appends query parameters.
-  /// Note: token is sent via Authorization header, not query parameter.
+  /// The session token is included as a `token` query parameter so it
+  /// survives WebSocket upgrade proxies that may strip custom headers.
   Uri buildWsUri() {
     final wsBase = baseUrl
         .replaceFirst(RegExp(r'^http://'), 'ws://')
         .replaceFirst(RegExp(r'^https://'), 'wss://');
     return Uri.parse(
-        '$wsBase/roots/$alias/watch?path=${Uri.encodeComponent(watchPath)}');
+        '$wsBase/roots/$alias/watch?path=${Uri.encodeComponent(watchPath)}&token=${Uri.encodeComponent(sessionToken)}');
   }
 
   /// Establishes (or re-establishes) the WebSocket connection.
