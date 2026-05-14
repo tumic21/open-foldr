@@ -53,12 +53,14 @@ jobs:
         if: ${{ !inputs.no_codesign }}
         run: flutter build ipa --${{ inputs.build_mode }}
 
+      # IPA is only produced when code signing is enabled.
+      # With --no-codesign the xcarchive is the primary artifact.
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v7
         with:
           name: ios-ipa-${{ inputs.build_mode }}
           path: build/ios/ipa/*.ipa
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Upload Xcode archive artifact
@@ -66,5 +68,5 @@ jobs:
         with:
           name: ios-xcarchive-${{ inputs.build_mode }}
           path: build/ios/archive/*.xcarchive
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
