@@ -54,18 +54,98 @@ extension _FileManagerScreenDragDrop on _FileManagerScreenState {
   Future<void> _uploadDroppedFiles(List<String> filePaths) async {
     if (!_canWrite || filePaths.isEmpty) return;
 
+    // Get current directory entries to check for conflicts
+    final listResult = await widget.client.listEntries(
+      widget.alias,
+      _state.currentPath,
+    );
+    if (!mounted) return;
+    if (listResult.isErr) {
+      _showError('Could not check for existing files');
+      return;
+    }
+    final existingEntries = listResult.unwrap;
+    final existingNames = {for (final e in existingEntries) e.name: e};
+
     final uploadManager = ResumableUploadManager(
       base: widget.client.baseUrl,
       sessionToken: widget.client.sessionToken,
     );
+
+    // Check which files have conflicts
+    final filesToUpload = <String, String>{}; // local path -> remote path
+    UploadConflictResolution? applyToAllResolution;
 
     try {
       for (final path in filePaths) {
         final file = File(path);
         if (!file.existsSync()) continue;
         final fileName = p.basename(path);
-        final remotePath =
+        
+        String remotePath =
             '${_state.currentPath == '/' ? '' : _state.currentPath}/$fileName';
+
+        // Check for conflict
+        if (existingNames.containsKey(fileName)) {
+          // Show dialog if we haven't already applied a global resolution
+          if (applyToAllResolution == null) {
+            if (!mounted) return;
+            final conflictResult = await showUploadConflictDialog(
+              context,
+              fileName: fileName,
+              allowApplyToAll: filePaths.length > 1,
+            );
+
+            if (!mounted) return;
+            if (conflictResult == null ||
+                conflictResult.resolution == UploadConflictResolution.cancel) {
+              return; // Cancel entire upload
+            }
+
+            if (conflictResult.applyToAll) {
+              applyToAllResolution = conflictResult.resolution;
+            } else {
+              // Handle this single file
+              if (conflictResult.resolution == UploadConflictResolution.rename) {
+                final ext = fileName.contains('.')
+                    ? fileName.substring(fileName.lastIndexOf('.'))
+                    : '';
+                final base = ext.isNotEmpty
+                    ? fileName.substring(0, fileName.lastIndexOf('.'))
+                    : fileName;
+                final newFileName =
+                    '${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
+                remotePath = '${_state.currentPath == '/' ? '' : _state.currentPath}/$newFileName';
+              }
+              // For overwrite, use the same remotePath
+            }
+          } else {
+            // Apply the global resolution
+            if (applyToAllResolution == UploadConflictResolution.rename) {
+              final ext = fileName.contains('.')
+                  ? fileName.substring(fileName.lastIndexOf('.'))
+                  : '';
+              final base = ext.isNotEmpty
+                  ? fileName.substring(0, fileName.lastIndexOf('.'))
+                  : fileName;
+              final newFileName =
+                  '${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
+              remotePath =
+                  '${_state.currentPath == '/' ? '' : _state.currentPath}/$newFileName';
+            }
+            // For overwrite, use the same remotePath
+          }
+        }
+
+        filesToUpload[path] = remotePath;
+      }
+
+      // Upload all files
+      for (final entry in filesToUpload.entries) {
+        final path = entry.key;
+        final remotePath = entry.value;
+        final file = File(path);
+        final fileName = p.basename(path);
 
         setState(() {
           _uploadProgress[path] = UploadProgressItem(

@@ -301,14 +301,70 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
     final remotePath =
         '${_state.currentPath == '/' ? '' : _state.currentPath}/${file.name}';
+    await _performUpload(remotePath, bytes, file.name);
+  }
+
+  /// Performs file upload with conflict handling.
+  /// 
+  /// If the file already exists, shows a dialog asking the user to:
+  /// - Overwrite the existing file
+  /// - Rename the file
+  /// - Cancel the upload
+  Future<void> _performUpload(
+    String remotePath,
+    Uint8List bytes,
+    String fileName, {
+    bool forceOverwrite = false,
+  }) async {
     final result = await widget.client.uploadFile(
       widget.alias,
       remotePath,
       bytes,
+      ifMatch: forceOverwrite ? '*' : null,
     );
     if (!mounted) return;
+
     if (result.isOk) {
       await _load();
+      return;
+    }
+
+    // Handle conflict: file already exists
+    if (result.errorCode == 'PRECONDITION_REQUIRED') {
+      final conflictResult = await showUploadConflictDialog(
+        context,
+        fileName: fileName,
+        allowApplyToAll: false,
+      );
+
+      if (!mounted) return;
+      if (conflictResult == null ||
+          conflictResult.resolution == UploadConflictResolution.cancel) {
+        return;
+      }
+
+      if (conflictResult.resolution == UploadConflictResolution.overwrite) {
+        // Retry with force-overwrite
+        await _performUpload(remotePath, bytes, fileName, forceOverwrite: true);
+        return;
+      }
+
+      if (conflictResult.resolution == UploadConflictResolution.rename) {
+        // Generate a new name with a timestamp suffix
+        final ext = fileName.contains('.')
+            ? fileName.substring(fileName.lastIndexOf('.'))
+            : '';
+        final base = ext.isNotEmpty
+            ? fileName.substring(0, fileName.lastIndexOf('.'))
+            : fileName;
+        final newFileName =
+            '${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
+        final newRemotePath = remotePath.substring(0, remotePath.lastIndexOf('/')) +
+            '/' +
+            newFileName;
+        await _performUpload(newRemotePath, bytes, newFileName);
+        return;
+      }
     } else {
       _showError(result.errorMessage);
     }

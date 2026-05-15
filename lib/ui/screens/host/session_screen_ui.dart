@@ -246,62 +246,171 @@ extension _SessionScreenUI on _SessionScreenState {
           )
         else
           ...sharedRoots.map(
-            (r) => ListTile(
-              leading: Image.asset('assets/icons/icon.png',
-                  width: 32, height: 32),
-              title: Text(r.alias),
-              subtitle: Text(r.localPath),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildRoleTooltip(
-                    DropdownMenu<Role>(
-                      initialSelection: r.minimumRole,
-                      width: 130,
-                      inputDecorationTheme: InputDecorationTheme(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
+            (r) => LayoutBuilder(
+              builder: (context, constraints) {
+                // Use custom layout on narrow screens (< 500px)
+                final isNarrow = constraints.maxWidth < 500;
+                
+                if (isNarrow) {
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Image.asset('assets/icons/icon.png',
+                                  width: 32, height: 32),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      r.alias,
+                                      style: Theme.of(context).textTheme.titleSmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            r.localPath,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildRoleTooltip(
+                                  DropdownMenu<Role>(
+                                    initialSelection: r.minimumRole,
+                                    width: double.infinity,
+                                    inputDecorationTheme: InputDecorationTheme(
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      filled: true,
+                                    ),
+                                    textStyle: Theme.of(context).textTheme.bodyMedium,
+                                    dropdownMenuEntries: Role.values
+                                        .map(
+                                          (role) => DropdownMenuEntry(
+                                            value: role,
+                                            label: role.displayName,
+                                          ),
+                                        )
+                                        .toList(),
+                                    onSelected: (role) {
+                                      if (role == null) return;
+                                      _changeMinimumRole(r, role);
+                                    },
+                                  ),
+                                ),
+                              ),
+                              _buildRoleTooltip(
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                  child: Icon(
+                                    Icons.info_outline,
+                                    size: 18,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                tooltip: 'Remove shared folder',
+                                onPressed: () => _removeSharedFolder(r.alias),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      textStyle: Theme.of(context).textTheme.bodyMedium,
-                      dropdownMenuEntries: Role.values
-                          .map(
-                            (role) => DropdownMenuEntry(
-                              value: role,
-                              label: role.displayName,
+                    ),
+                  );
+                } else {
+                  return ListTile(
+                    leading: Image.asset('assets/icons/icon.png',
+                        width: 32, height: 32),
+                    title: Text(r.alias),
+                    subtitle: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          r.localPath,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildRoleTooltip(
+                          DropdownMenu<Role>(
+                            initialSelection: r.minimumRole,
+                            width: 130,
+                            inputDecorationTheme: InputDecorationTheme(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
                             ),
-                          )
-                          .toList(),
-                      onSelected: (role) {
-                        if (role == null) return;
-                        _changeMinimumRole(r, role);
-                      },
+                            textStyle: Theme.of(context).textTheme.bodyMedium,
+                            dropdownMenuEntries: Role.values
+                                .map(
+                                  (role) => DropdownMenuEntry(
+                                    value: role,
+                                    label: role.displayName,
+                                  ),
+                                )
+                                .toList(),
+                            onSelected: (role) {
+                              if (role == null) return;
+                              _changeMinimumRole(r, role);
+                            },
+                          ),
+                        ),
+                        _buildRoleTooltip(
+                          const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Remove shared folder',
+                          onPressed: () => _removeSharedFolder(r.alias),
+                        ),
+                      ],
                     ),
-                  ),
-                  _buildRoleTooltip(
-                    const Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Icon(
-                        Icons.info_outline,
-                        size: 18,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Remove shared folder',
-                    onPressed: () => _removeSharedFolder(r.alias),
-                  ),
-                ],
-              ),
+                  );
+                }
+              },
             ),
           ),
       ],
