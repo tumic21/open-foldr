@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../app.dart';
 import '../../../server/server.dart';
 import '../../../core/session_store.dart';
 import 'host/session_screen.dart';
@@ -36,6 +37,10 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = OpenFoldrApp.maybeOf(context);
+    final themeMode = appState?.themeMode ?? ThemeMode.system;
+    final subtitleColor = Theme.of(context).colorScheme.onSurfaceVariant;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -45,6 +50,58 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: PopupMenuButton<ThemeMode>(
+                    tooltip: 'Theme: ${_themeLabel(themeMode)}',
+                    icon: const Icon(Icons.brightness_6),
+                    onSelected: appState?.setThemeMode,
+                    itemBuilder: (context) => [
+                      PopupMenuItem<ThemeMode>(
+                        value: ThemeMode.system,
+                        child: Row(
+                          children: [
+                            Icon(
+                              ThemeMode.system == themeMode
+                                  ? Icons.radio_button_checked
+                                  : Icons.brightness_auto,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('Auto (System)'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem<ThemeMode>(
+                        value: ThemeMode.light,
+                        child: Row(
+                          children: [
+                            Icon(
+                              ThemeMode.light == themeMode
+                                  ? Icons.radio_button_checked
+                                  : Icons.light_mode,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('Light'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem<ThemeMode>(
+                        value: ThemeMode.dark,
+                        child: Row(
+                          children: [
+                            Icon(
+                              ThemeMode.dark == themeMode
+                                  ? Icons.radio_button_checked
+                                  : Icons.dark_mode,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('Dark'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 Image.asset(
                   'assets/icons/icon.png',
                   width: 96,
@@ -63,7 +120,7 @@ class HomeScreen extends StatelessWidget {
                   'Local network file sharing',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
+                        color: subtitleColor,
                       ),
                 ),
                 const SizedBox(height: 56),
@@ -97,5 +154,13 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _themeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.system => 'System',
+      ThemeMode.light => 'Light',
+      ThemeMode.dark => 'Dark',
+    };
   }
 }

@@ -3,18 +3,35 @@ part of 'session_screen.dart';
 extension _SessionScreenUI on _SessionScreenState {
   /// Build the security status bar at the top
   Widget _buildSecurityStatusBar() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final barColor = isDark
+        ? const Color(0xFF1B5E20)
+        : const Color(0xFFE8F5E9);
+    final contentColor = isDark
+        ? const Color(0xFFE8F5E9)
+        : const Color(0xFF1B5E20);
     final devices = widget.server.tokens.connectedDevices();
     return Container(
-      color: Colors.green.shade50,
+      color: barColor,
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          const Icon(Icons.lock, color: Colors.green),
+          Icon(Icons.lock, color: contentColor),
           const SizedBox(width: 8),
-          const Text('Encrypted · '),
-          Text('Port ${widget.server.port}'),
+          Text(
+            'Encrypted · ',
+            style: TextStyle(color: contentColor),
+          ),
+          Text(
+            'Port ${widget.server.port}',
+            style: TextStyle(color: contentColor),
+          ),
           const Spacer(),
-          Text('${devices.length} device(s) connected'),
+          Text(
+            '${devices.length} device(s) connected',
+            style: TextStyle(color: contentColor),
+          ),
         ],
       ),
     );
@@ -22,6 +39,7 @@ extension _SessionScreenUI on _SessionScreenState {
 
   /// Build the pairing code card
   Widget _buildPairingCard() {
+    final theme = Theme.of(context);
     final hostName = HostIdentity.name;
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -49,9 +67,9 @@ extension _SessionScreenUI on _SessionScreenState {
                 children: [
                   Text(
                     'Host IP: $_hostIp',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: Colors.black87,
+                      color: theme.colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                     textAlign: TextAlign.center,
@@ -99,7 +117,10 @@ extension _SessionScreenUI on _SessionScreenState {
               const SizedBox(height: 4),
               Text(
                 'Expires in ${_secondsLeft}s',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
               const SizedBox(height: 8),
               TextButton.icon(
@@ -126,6 +147,8 @@ extension _SessionScreenUI on _SessionScreenState {
 
   /// Build the expanded list of host IP addresses
   Widget _buildHostIpsExpanded() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Container(
@@ -135,22 +158,22 @@ extension _SessionScreenUI on _SessionScreenState {
           vertical: 14,
         ),
         decoration: BoxDecoration(
-          color: Colors.blue.shade50,
+          color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.blue.shade100,
+            color: colorScheme.outlineVariant,
             width: 1.5,
           ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'All IP addresses',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: Colors.blue,
+                color: colorScheme.primary,
               ),
             ),
             const SizedBox(height: 10),
@@ -175,19 +198,19 @@ extension _SessionScreenUI on _SessionScreenState {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: colorScheme.surface,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: Colors.blue.shade200,
+                        color: colorScheme.outlineVariant,
                         width: 1,
                       ),
                     ),
                     child: Text(
                       ip,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: Colors.black87,
+                        color: colorScheme.onSurface,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -196,11 +219,11 @@ extension _SessionScreenUI on _SessionScreenState {
               ).toList(),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Click any address to copy',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.blue,
+                color: colorScheme.primary,
                 fontStyle: FontStyle.italic,
               ),
             ),

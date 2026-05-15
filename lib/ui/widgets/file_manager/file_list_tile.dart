@@ -52,8 +52,8 @@ class FileListTile extends StatelessWidget {
             )
           : (() {
               final fd = entry.isDirectory
-                  ? folderIconData
-                  : fileTypeIcon(entry.name);
+                  ? folderIconData(context)
+                  : fileTypeIcon(entry.name, context);
               return Icon(fd.icon, color: fd.color);
             }()),
       title: Text(entry.name, overflow: TextOverflow.ellipsis),
