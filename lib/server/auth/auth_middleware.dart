@@ -16,12 +16,24 @@ Middleware bearerAuthMiddleware(TokenStore store) {
       // Auth endpoints are public.
       if (request.url.path.startsWith('v1/auth/')) return inner(request);
 
+      // Accept token from Authorization header or, as a fallback for WebSocket
+      // upgrades (which cannot set custom headers), from the ?token= query
+      // parameter.
       final header = request.headers['authorization'] ?? '';
-      if (!header.startsWith('Bearer ')) {
-        return _unauthorized('Missing or invalid Authorization header');
+      final String token;
+      if (header.startsWith('Bearer ')) {
+        token = header.substring(7);
+      } else {
+        // Depending on adapter/proxy behavior, query params may be present on
+        // either request.url (relative) or requestedUri (absolute).
+        final queryToken =
+            request.url.queryParameters['token'] ??
+            request.requestedUri.queryParameters['token'];
+        if (queryToken == null || queryToken.isEmpty) {
+          return _unauthorized('Missing or invalid Authorization header');
+        }
+        token = queryToken;
       }
-
-      final token = header.substring(7);
       final auth = store.validateWithDevice(token);
       if (auth == null) {
         return _unauthorized('Token invalid or expired');

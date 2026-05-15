@@ -58,10 +58,9 @@ Handler watchRouteHandler(RootRegistry registry, TokenStore tokens) {
     }
 
     // Authentication is enforced by the bearerAuthMiddleware before this
-    // handler is called. The middleware validates the Authorization: Bearer
-    // header (sent in the WebSocket upgrade request) and sets 'role' in the
-    // request context if the token is valid.
-    final authenticated = request.context.containsKey('role');
+    // handler is called. The middleware stores auth context using the
+    // 'openfoldr.role' key.
+    final authenticated = request.context.containsKey('openfoldr.role');
 
     if (!authenticated) {
       return Response(401,
