@@ -314,23 +314,6 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
-  Future<void> _uploadNewVersion(String remotePath) async {
-    final metaResult = await widget.client.getMetadata(
-      widget.alias,
-      remotePath,
-    );
-    if (!mounted) return;
-    if (metaResult.isErr) {
-      _showError('Could not fetch file metadata');
-      return;
-    }
-    final versionToken = metaResult.unwrap.versionToken;
-    final picked = await FilePicker.pickFiles(withData: true);
-    if (picked == null || picked.files.isEmpty) return;
-    final bytes = picked.files.first.bytes;
-    if (bytes == null) return;
-    await _doPut(remotePath, bytes, ifMatch: versionToken);
-  }
 
   Future<void> _doPut(
     String remotePath,
@@ -762,88 +745,6 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   // ─── File actions bottom sheet ─────────────────────────────────────────────
-
-  void _showFileActions(FileEntry entry) {
-    final isDir = entry.isDirectory;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!isDir)
-              ListTile(
-                leading: const Icon(Icons.preview),
-                title: const Text('Preview'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => FilePreviewScreen(
-                        base: widget.client.baseUrl,
-                        sessionToken: widget.client.sessionToken,
-                        alias: widget.alias,
-                        remotePath: entry.path,
-                        fileName: entry.name,
-                        fileSize: entry.size,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            if (!isDir)
-              ListTile(
-                leading: const Icon(Icons.download),
-                title: const Text('Download'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _downloadFile(entry.path, entry.name);
-                },
-              ),
-            if (_canWrite && !isDir)
-              ListTile(
-                leading: const Icon(Icons.upload_file),
-                title: const Text('Upload New Version'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _uploadNewVersion(entry.path);
-                },
-              ),
-            if (_canWrite)
-              ListTile(
-                leading: const Icon(Icons.drive_file_rename_outline),
-                title: const Text('Rename'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _renameEntry(entry);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Properties'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showPropertiesDialog(context, entry: entry);
-              },
-            ),
-            if (_canDelete)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text(
-                  'Delete',
-                  style: TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _deleteEntry(entry.path, entry.name);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ─── Settings dialog ───────────────────────────────────────────────────────
 
@@ -1329,7 +1230,6 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             onLongPress: _isDesktop
                 ? null
                 : () => _state.toggleSelect(entry.path),
-            onMoreTap: () => _showFileActions(entry),
           );
         },
       ),
@@ -1338,54 +1238,114 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
 
   Widget _buildBottomBar() {
+    final byPath = {for (final e in _state.entries) e.path: e};
+    final selected = _state.selectedPaths
+        .map((path) => byPath[path])
+        .whereType<FileEntry>()
+        .toList(growable: false);
+
+    final isSingleSelection = selected.length == 1;
+    final selectedEntry = isSingleSelection ? selected.first : null;
+    final isFile = selectedEntry?.isFile ?? false;
+    final isDir = selectedEntry?.isDirectory ?? false;
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.download),
-              tooltip: 'Download selected',
-              onPressed: _downloadSelected,
-            ),
-            IconButton(
-              icon: const Icon(Icons.copy),
-              tooltip: 'Copy',
-              onPressed: () {
-                _state.copySelected(widget.alias);
-                _state.clearSelection();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Copied to clipboard')),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.cut),
-              tooltip: 'Cut',
-              onPressed: _canWrite
-                  ? () {
-                      _state.cutSelected(widget.alias);
-                      _state.clearSelection();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Cut to clipboard')),
-                      );
-                    }
-                  : null,
-            ),
-            if (_state.clipboard != null && _canWrite)
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              // Preview (single file only)
+              if (isSingleSelection && isFile)
+                IconButton(
+                  icon: const Icon(Icons.preview),
+                  tooltip: 'Preview',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FilePreviewScreen(
+                          base: widget.client.baseUrl,
+                          sessionToken: widget.client.sessionToken,
+                          alias: widget.alias,
+                          remotePath: selectedEntry!.path,
+                          fileName: selectedEntry.name,
+                          fileSize: selectedEntry.size,
+                        ),
+                      ),
+                    );
+                    _state.clearSelection();
+                  },
+                ),
+              // Download selected
               IconButton(
-                icon: const Icon(Icons.paste),
-                tooltip: 'Paste',
-                onPressed: _paste,
+                icon: const Icon(Icons.download),
+                tooltip: 'Download selected',
+                onPressed: _downloadSelected,
               ),
-            if (_canDelete)
+              // Copy
               IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                tooltip: 'Delete selected',
-                onPressed: _deleteSelected,
+                icon: const Icon(Icons.copy),
+                tooltip: 'Copy',
+                onPressed: () {
+                  _state.copySelected(widget.alias);
+                  _state.clearSelection();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied to clipboard')),
+                  );
+                },
               ),
-          ],
+              // Cut
+              IconButton(
+                icon: const Icon(Icons.cut),
+                tooltip: 'Cut',
+                onPressed: _canWrite
+                    ? () {
+                        _state.cutSelected(widget.alias);
+                        _state.clearSelection();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cut to clipboard')),
+                        );
+                      }
+                    : null,
+              ),
+              // Paste
+              if (_state.clipboard != null && _canWrite)
+                IconButton(
+                  icon: const Icon(Icons.paste),
+                  tooltip: 'Paste',
+                  onPressed: _paste,
+                ),
+              // Rename (single item, can write)
+              if (isSingleSelection && _canWrite)
+                IconButton(
+                  icon: const Icon(Icons.drive_file_rename_outline),
+                  tooltip: 'Rename',
+                  onPressed: () {
+                    _renameEntry(selectedEntry!);
+                    _state.clearSelection();
+                  },
+                ),
+              // Properties (single item only)
+              if (isSingleSelection)
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  tooltip: 'Properties',
+                  onPressed: () {
+                    showPropertiesDialog(context, entry: selectedEntry!);
+                    _state.clearSelection();
+                  },
+                ),
+              // Delete
+              if (_canDelete)
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  tooltip: 'Delete selected',
+                  onPressed: _deleteSelected,
+                ),
+            ],
+          ),
         ),
       ),
     );

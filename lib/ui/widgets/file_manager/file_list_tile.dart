@@ -10,7 +10,6 @@ class FileListTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onDoubleTap;
   final VoidCallback? onLongPress;
-  final VoidCallback? onMoreTap;
   final List<String>? draggablePaths;
   final VoidCallback? onDragStarted;
   final VoidCallback? onDragCompleted;
@@ -24,7 +23,6 @@ class FileListTile extends StatelessWidget {
     this.onTap,
     this.onDoubleTap,
     this.onLongPress,
-    this.onMoreTap,
     this.draggablePaths,
     this.onDragStarted,
     this.onDragCompleted,
@@ -60,11 +58,6 @@ class FileListTile extends StatelessWidget {
             }()),
       title: Text(entry.name, overflow: TextOverflow.ellipsis),
       subtitle: entry.isDirectory ? null : Text(_subtitle()),
-      trailing: IconButton(
-        icon: const Icon(Icons.more_vert, size: 18),
-        onPressed: onMoreTap,
-        tooltip: 'More options',
-      ),
       onTap: useGesture ? null : onTap,
       onLongPress: useGesture ? null : onLongPress,
     );
