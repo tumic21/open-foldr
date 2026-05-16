@@ -29,6 +29,7 @@ jobs:
       semver: ${{ steps.version.outputs.semver }}
       tag: ${{ steps.version.outputs.tag }}
       new_version: ${{ steps.version.outputs.new_version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
       - name: Checkout
@@ -104,7 +105,15 @@ jobs:
 
           semver="${major}.${minor}.${patch}"
           new_version="${semver}+${build}"
-          tag="v${semver}"
+          branch_name="${GITHUB_REF_NAME}"
+          prerelease="false"
+
+          if [[ "$branch_name" == "develop" ]]; then
+            tag="v${semver}-dev.${GITHUB_RUN_NUMBER}"
+            prerelease="true"
+          else
+            tag="v${semver}"
+          fi
 
           if git ls-remote --tags origin | grep -q "refs/tags/${tag}$"; then
             echo "Tag already exists: ${tag}"
@@ -114,6 +123,7 @@ jobs:
           echo "semver=${semver}" >> "$GITHUB_OUTPUT"
           echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
       - name: Update pubspec version
         run: |
@@ -325,6 +335,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
+          prerelease: ${{ needs.prepare-release.outputs.prerelease }}
           generate_release_notes: true
           files: |
             dist/linux-flatpak/*.flatpak
