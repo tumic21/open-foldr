@@ -35,4 +35,3 @@ Primary security scope for OpenFoldr includes:
 - Filesystem path sandboxing
 - Transfer integrity and conflict safety
 
-See _project/spec/security.md for the detailed threat model.
