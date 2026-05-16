@@ -1,0 +1,117 @@
+name: Release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Bump Version And Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+
+          if [[ ! "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)$ ]]; then
+            echo "Unsupported pubspec.yaml version format: $current"
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          build="${BASH_REMATCH[4]}"
+
+          case "${{ inputs.bump }}" in
+            none)
+              ;;
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Unsupported bump type: ${{ inputs.bump }}"
+              exit 1
+              ;;
+          esac
+
+          build=$((build + 1))
+
+          semver="${major}.${minor}.${patch}"
+          new_version="${semver}+${build}"
+          tag="v${semver}"
+
+          if git ls-remote --tags origin | grep -q "refs/tags/${tag}$"; then
+            echo "Tag already exists: ${tag}"
+            exit 1
+          fi
+
+          echo "semver=${semver}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Update pubspec version
+        run: |
+          sed -i "s/^version: .*/version: ${{ steps.version.outputs.new_version }}/" pubspec.yaml
+
+      - name: Commit release version
+        run: |
+          git add pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "No version change to commit"
+          else
+            git commit -m "chore(release): ${{ steps.version.outputs.semver }}"
+            git push origin HEAD
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
