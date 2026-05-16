@@ -36,6 +36,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Preflight platform file checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            "linux/flutter/CMakeLists.txt"
+            "windows/flutter/CMakeLists.txt"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing required file: $file"
+              echo "Make sure platform Flutter CMake files are tracked in git."
+              exit 1
+            fi
+          done
+
       - name: Configure git author
         run: |
           git config user.name "github-actions[bot]"
