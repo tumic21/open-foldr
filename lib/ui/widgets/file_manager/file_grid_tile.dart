@@ -79,6 +79,7 @@ class FileGridTile extends StatelessWidget {
                 alias: alias,
                 entry: entry,
                 size: 48,
+                requestSize: 128,
                 fit: BoxFit.cover,
               ),
               const SizedBox(height: 6),

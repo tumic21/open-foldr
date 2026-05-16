@@ -59,6 +59,7 @@ class FileListTile extends StatelessWidget {
               alias: alias,
               entry: entry,
               size: 24,
+              requestSize: 48,
               fit: BoxFit.cover,
             ),
       title: Text(entry.name, overflow: TextOverflow.ellipsis),
