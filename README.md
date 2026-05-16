@@ -1,142 +1,66 @@
 # OpenFoldr
 
-Cross-platform local network directory sync and collaboration.
+OpenFoldr is a cross-platform app for sharing folders on your local network.
 
-OpenFoldr aims to provide a fast and secure way to share local folders over a LAN with controlled permissions, conflict-aware editing, and strong filesystem safety.
+It is designed for fast LAN collaboration with controlled access and safer file operations.
 
-## Vision
+## Download
 
-- Share one or more folders with root aliases.
-- Discover hosts on LAN using mDNS, with manual fallback.
-- Browse, upload, edit, and delete files with role-based access.
-- Keep traffic encrypted and enforce sandboxed filesystem access.
+Download the latest build from GitHub Releases:
 
-## Planned Stack
+- https://github.com/tumic21/open-foldr/releases
 
-- Flutter (Linux, Windows, Android, iOS)
-- Dart backend (HTTP and WebSocket)
-- mDNS discovery
-- TLS-secured transport
+Release assets currently include:
 
-## Getting Started
+- Linux Flatpak bundle: `openfoldr-<version>-linux.flatpak`
+- Android APK: `openfoldr-<version>-android.apk`
+- Windows portable ZIP: `openfoldr-<version>-windows-portable.zip`
 
-### Prerequisites
+## Install And Run
 
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) (stable channel)
-- Dart (bundled with Flutter)
-- For Android: Android SDK with emulator or physical device
-- For Linux: CMake, Ninja, `clang`, `pkg-config` (see `flutter doctor`)
-- For Windows: Visual Studio 2022 with C++ workload
+### Linux (Flatpak)
 
-Install dependencies:
+1. Download the `.flatpak` asset from the latest release.
+2. Install it:
 
 ```bash
-flutter pub get
+flatpak install --user --bundle ./openfoldr-<version>-linux.flatpak
 ```
 
----
-
-### Run on Linux (desktop)
+3. Run it:
 
 ```bash
-flutter run -d linux
+flatpak run com.openfoldr.OpenFoldr
 ```
 
----
+### Android (APK)
 
-### Run on Windows (desktop)
+1. Download the `.apk` asset from the latest release.
+2. On your Android device, allow installs from the source app (browser/files app).
+3. Open the APK and complete installation.
 
-```bash
-flutter run -d windows
-```
+### Windows (Portable ZIP)
 
----
+1. Download the `.zip` asset from the latest release.
+2. Extract it to any folder.
+3. Run `open_foldr.exe`.
 
-### Run on Android emulator
+## Quick Start
 
-1. Start the emulator (one-time AVD creation):
+1. Open OpenFoldr on two devices in the same local network.
+2. On one device, start sharing a folder.
+3. On the other device, connect to the host and browse or transfer files.
 
-```bash
-# List available AVDs
-~/Android/Sdk/emulator/emulator -list-avds
+## Troubleshooting
 
-# Launch an AVD
-~/Android/Sdk/emulator/emulator -avd <avd-name> -no-snapshot-save
-```
+- Ensure both devices are on the same LAN.
+- Allow OpenFoldr through firewall prompts when asked.
+- If automatic discovery fails, connect manually using the host address.
 
-2. Run the app:
+## For Developers
 
-```bash
-flutter run -d emulator-5554
-```
-
-For verbose build output:
-
-```bash
-flutter run -v -d emulator-5554
-```
-
----
-
-### Run on Android physical device
-
-Enable **USB debugging** on the device, connect via USB, then:
-
-```bash
-flutter devices          # confirm device appears
-flutter run -d <device-id>
-```
-
----
-
-### Run on iOS simulator (macOS only)
-
-```bash
-open -a Simulator
-flutter run -d <simulator-id>
-```
-
----
-
-### Run tests
-
-```bash
-# All tests (unit + integration + system)
-flutter test
-
-# Single file
-flutter test test/unit/backoff_test.dart
-
-# Sequential (avoids port conflicts)
-flutter test --concurrency 1
-```
-
----
-
-### Common flutter run commands (while running)
-
-| Key | Action |
-|-----|--------|
-| `r` | Hot reload |
-| `R` | Hot restart |
-| `d` | Detach (leave app running) |
-| `q` | Quit |
-| `h` | Show all commands |
-
-## Project Roadmap
-
-See _project/spec/spec.md and _project/spec/implementation-board.md.
-
-## Branching Strategy
-
-- `develop` is the active integration branch for day-to-day work.
-- `main` is the stable branch for releases and tagged milestones.
-- Feature branches should be created from `develop` and merged back into `develop` via pull request.
-- Release pull requests should merge `develop` into `main`.
-
-## Security
-
-Please review SECURITY.md before reporting vulnerabilities.
+- Development and local run instructions: [docs/development.md](docs/development.md)
+- Security reporting: [SECURITY.md](SECURITY.md)
 
 ## License
 
