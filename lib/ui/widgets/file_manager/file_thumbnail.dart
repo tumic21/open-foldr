@@ -32,8 +32,15 @@ class FileThumbnail extends StatefulWidget {
 class _FileThumbnailState extends State<FileThumbnail> {
   Future<Result<ThumbnailResponse>>? _future;
   bool _hasStartedLoading = false;
+  bool _loadFinished = false;
 
   ThumbnailService get _service => widget.service ?? ThumbnailService.instance;
+
+  @override
+  void dispose() {
+    _maybeCancelLoad();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant FileThumbnail oldWidget) {
@@ -43,14 +50,16 @@ class _FileThumbnailState extends State<FileThumbnail> {
         oldWidget.requestSize != widget.requestSize ||
         oldWidget.fit != widget.fit ||
         oldWidget.service != widget.service) {
+      _maybeCancelLoad();
       _future = null;
       _hasStartedLoading = false;
+      _loadFinished = false;
     }
   }
 
-  Future<Result<ThumbnailResponse>> _load() {
+  Future<Result<ThumbnailResponse>> _load() async {
     final target = _targetSize();
-    return _service.getThumbnail(
+    final result = await _service.getThumbnail(
       client: widget.client,
       alias: widget.alias,
       path: widget.entry.path,
@@ -58,6 +67,8 @@ class _FileThumbnailState extends State<FileThumbnail> {
       height: target,
       fit: widget.fit == BoxFit.contain ? 'contain' : 'cover',
     );
+    if (mounted) _loadFinished = true;
+    return result;
   }
 
   int _targetSize() {
@@ -68,12 +79,36 @@ class _FileThumbnailState extends State<FileThumbnail> {
     return widget.size.round().clamp(24, 512);
   }
 
+  void _maybeCancelLoad() {
+    if (!_hasStartedLoading || _loadFinished) return;
+    final target = _targetSize();
+    _service.cancelThumbnail(
+      alias: widget.alias,
+      path: widget.entry.path,
+      width: target,
+      height: target,
+      fit: widget.fit == BoxFit.contain ? 'contain' : 'cover',
+    );
+  }
+
   void _handleVisibilityChanged(VisibilityInfo info) {
-    if (_hasStartedLoading || info.visibleFraction <= 0) return;
-    _hasStartedLoading = true;
-    setState(() {
-      _future = _load();
-    });
+    if (info.visibleFraction > 0) {
+      if (!_hasStartedLoading) {
+        _hasStartedLoading = true;
+        _loadFinished = false;
+        setState(() {
+          _future = _load();
+        });
+      }
+    } else {
+      if (_hasStartedLoading && !_loadFinished) {
+        _maybeCancelLoad();
+        // Reset so the tile reloads when it scrolls back into view.
+        // Skip setState — the tile is invisible, no rebuild is needed.
+        _hasStartedLoading = false;
+        _future = null;
+      }
+    }
   }
 
   @override

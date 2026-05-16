@@ -26,7 +26,8 @@ class ThumbnailService {
 
   final LinkedHashMap<_CacheKey, _CachedThumbnail> _cache = LinkedHashMap();
   final Map<_CacheKey, Future<Result<ThumbnailResponse>>> _inFlight = {};
-  final Queue<Completer<void>> _waiters = Queue();
+  final Queue<_Waiter> _waiters = Queue();
+  final Set<String> _cancelled = {};
 
   int _cacheBytes = 0;
   int _activeRequests = 0;
@@ -90,44 +91,91 @@ class ThumbnailService {
       return existing;
     }
 
-    final future = _withPermit(() async {
-      final stopwatch = Stopwatch()..start();
-      final result = await client.getThumbnail(
-        alias,
-        path,
-        width: w,
-        height: h,
-        fit: fit,
-      );
-      stopwatch.stop();
-      _totalFetchMicros += stopwatch.elapsedMicroseconds;
+    // Clear any previous cancellation so a fresh request can proceed.
+    _cancelled.remove(key);
 
-      if (result.isOk) {
-        _networkSuccesses++;
-        final thumbnail = result.unwrap;
-        if (!thumbnail.notModified && thumbnail.bytes != null) {
-          _store(
-            key,
-            _CachedThumbnail(
-              bytes: thumbnail.bytes!,
-              etag: thumbnail.etag,
-              contentType: thumbnail.contentType,
-            ),
-          );
-        }
-      } else {
-        _networkErrors++;
-      }
-      _maybeDebugLog();
-      return result;
-    });
-
+    final future = _startRequest(key, client, alias, path, w, h, fit);
     _inFlight[key] = future;
     future.whenComplete(() {
       _inFlight.remove(key);
     });
 
     return future;
+  }
+
+  Future<Result<ThumbnailResponse>> _startRequest(
+    String key,
+    FileClient client,
+    String alias,
+    String path,
+    int w,
+    int h,
+    String fit,
+  ) async {
+    try {
+      return await _withPermit(key, () async {
+        final stopwatch = Stopwatch()..start();
+        final result = await client.getThumbnail(
+          alias,
+          path,
+          width: w,
+          height: h,
+          fit: fit,
+        );
+        stopwatch.stop();
+        _totalFetchMicros += stopwatch.elapsedMicroseconds;
+
+        if (result.isOk) {
+          _networkSuccesses++;
+          final thumbnail = result.unwrap;
+          if (!thumbnail.notModified && thumbnail.bytes != null) {
+            _store(
+              key,
+              _CachedThumbnail(
+                bytes: thumbnail.bytes!,
+                etag: thumbnail.etag,
+                contentType: thumbnail.contentType,
+              ),
+            );
+          }
+        } else {
+          _networkErrors++;
+        }
+        _maybeDebugLog();
+        return result;
+      });
+    } on _CancelledException {
+      return const Err('CANCELLED', 'Thumbnail request was cancelled');
+    }
+  }
+
+  /// Cancels any queued (not yet executing) thumbnail request for the given key.
+  /// If the request is already in-flight (network call underway) the cancellation
+  /// is noted so the result is discarded and not stored in the cache.
+  void cancelThumbnail({
+    required String alias,
+    required String path,
+    required int width,
+    required int height,
+    String fit = 'cover',
+  }) {
+    final w = width.clamp(24, 512);
+    final h = height.clamp(24, 512);
+    final key = _makeKey(alias, path, w, h, fit);
+    _cancelled.add(key);
+    _inFlight.remove(key);
+    // Wake and remove any waiters for this key; they will detect the
+    // cancellation flag and exit without consuming a permit.
+    final keep = Queue<_Waiter>();
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (waiter.key == key) {
+        waiter.completer.complete();
+      } else {
+        keep.addLast(waiter);
+      }
+    }
+    _waiters.addAll(keep);
   }
 
   void clear() {
@@ -151,21 +199,30 @@ class ThumbnailService {
     _maybeDebugLog(force: true);
   }
 
-  Future<T> _withPermit<T>(Future<T> Function() task) async {
-    while (_activeRequests >= maxInFlight) {
-      final waiter = Completer<void>();
-      _waiters.addLast(waiter);
-      await waiter.future;
-    }
-
-    _activeRequests++;
+  Future<T> _withPermit<T>(String key, Future<T> Function() task) async {
+    bool acquiredPermit = false;
     try {
+      while (_activeRequests >= maxInFlight) {
+        if (_cancelled.contains(key)) throw _CancelledException();
+        final waiter = _Waiter(key, Completer<void>());
+        _waiters.addLast(waiter);
+        await waiter.completer.future;
+      }
+      if (_cancelled.contains(key)) throw _CancelledException();
+      _activeRequests++;
+      acquiredPermit = true;
       return await task();
     } finally {
-      _activeRequests--;
-      if (_waiters.isNotEmpty) {
-        _waiters.removeFirst().complete();
+      if (acquiredPermit) {
+        _activeRequests--;
+        _advanceWaiters();
       }
+    }
+  }
+
+  void _advanceWaiters() {
+    if (_waiters.isNotEmpty) {
+      _waiters.removeFirst().completer.complete();
     }
   }
 
@@ -259,6 +316,14 @@ class ThumbnailMetricsSnapshot {
     return avgMicros / 1000.0;
   }
 }
+
+class _Waiter {
+  final String key;
+  final Completer<void> completer;
+  _Waiter(this.key, this.completer);
+}
+
+class _CancelledException implements Exception {}
 
 class _CachedThumbnail {
   final Uint8List bytes;

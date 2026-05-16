@@ -333,5 +333,131 @@ void main() {
       service.reportDecodeFailure();
       expect(service.metricsSnapshot.decodeFailures, 2);
     });
+
+    test('cancelThumbnail skips network call for queued request', () async {
+      var calls = 0;
+      // Use a slow first request to hold the single permit, forcing the second
+      // into the waiters queue where it can be cancelled.
+      final firstCompleter = Completer<Result<ThumbnailResponse>>();
+      final client = _FakeFileClient(({
+        required alias,
+        required path,
+        required width,
+        required height,
+        required fit,
+        String? ifNoneMatch,
+      }) {
+        calls++;
+        if (path == '/slow.jpg') return firstCompleter.future;
+        return Future.value(
+          Ok(
+            ThumbnailResponse(
+              bytes: Uint8List.fromList([2]),
+              etag: 'e2',
+              contentType: 'image/jpeg',
+            ),
+          ),
+        );
+      });
+
+      final service = ThumbnailService(
+        cacheBudgetBytes: 1024 * 1024,
+        maxInFlight: 1,
+        enableDebugLogs: false,
+      );
+
+      // Fill the single permit slot.
+      final f1 = service.getThumbnail(
+        client: client,
+        alias: 'docs',
+        path: '/slow.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      // Yield so the first request acquires the permit.
+      await Future<void>.delayed(Duration.zero);
+
+      // Queue a second request (still waiting for the permit).
+      final f2 = service.getThumbnail(
+        client: client,
+        alias: 'docs',
+        path: '/queued.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      // Cancel the queued request before the permit is released.
+      service.cancelThumbnail(
+        alias: 'docs',
+        path: '/queued.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      // Release the first permit.
+      firstCompleter.complete(
+        Ok(
+          ThumbnailResponse(
+            bytes: Uint8List.fromList([1]),
+            etag: 'e1',
+            contentType: 'image/jpeg',
+          ),
+        ),
+      );
+
+      await f1;
+      final result2 = await f2;
+
+      expect(calls, 1, reason: 'Only the first (non-cancelled) request should reach the network.');
+      expect(result2.isErr, isTrue);
+      expect(result2.errorCode, 'CANCELLED');
+    });
+
+    test('cancelThumbnail allows re-request after cancellation', () async {
+      var calls = 0;
+      final client = _FakeFileClient(({
+        required alias,
+        required path,
+        required width,
+        required height,
+        required fit,
+        String? ifNoneMatch,
+      }) async {
+        calls++;
+        return Ok(
+          ThumbnailResponse(
+            bytes: Uint8List.fromList([1]),
+            etag: 'e',
+            contentType: 'image/jpeg',
+          ),
+        );
+      });
+
+      final service = ThumbnailService(
+        cacheBudgetBytes: 1024 * 1024,
+        enableDebugLogs: false,
+      );
+
+      // Cancel a key that was never requested — should be a no-op.
+      service.cancelThumbnail(
+        alias: 'docs',
+        path: '/img.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      // A fresh request after cancellation should succeed.
+      final result = await service.getThumbnail(
+        client: client,
+        alias: 'docs',
+        path: '/img.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      expect(calls, 1);
+      expect(result.isOk, isTrue);
+    });
   });
 }
