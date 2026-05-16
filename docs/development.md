@@ -60,13 +60,6 @@ flutter devices
 flutter run -d <device-id>
 ```
 
-### iOS simulator (macOS only)
-
-```bash
-open -a Simulator
-flutter run -d <simulator-id>
-```
-
 ## Run Tests
 
 Run all tests:

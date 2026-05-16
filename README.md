@@ -4,7 +4,6 @@
 ![Android APK Stable](https://img.shields.io/badge/Android%20APK-Stable-2ea44f)
 ![Windows Installer Stable](https://img.shields.io/badge/Windows%20Installer-Stable-2ea44f)
 ![Windows Portable Stable](https://img.shields.io/badge/Windows%20Portable-Stable-2ea44f)
-![iOS Experimental](https://img.shields.io/badge/iOS-Experimental-f0ad4e)
 
 OpenFoldr is a cross-platform app for sharing folders on your local network.
 
@@ -31,7 +30,6 @@ Release assets currently include:
 | Android | APK (`.apk`) | Stable |
 | Windows | Installer (`.exe`) | Stable |
 | Windows | Portable ZIP (`.zip`) | Stable |
-| iOS | Not published in GitHub Releases yet | Experimental |
 
 ## Install And Run
 
