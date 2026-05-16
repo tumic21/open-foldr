@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../../client/file_client.dart';
 import '../../services/thumbnail_service.dart';
@@ -11,7 +12,7 @@ class FileThumbnail extends StatefulWidget {
   final double size;
   final int? requestSize;
   final BoxFit fit;
-  final ThumbnailService service;
+  final ThumbnailService? service;
 
   const FileThumbnail({
     super.key,
@@ -21,7 +22,7 @@ class FileThumbnail extends StatefulWidget {
     required this.size,
     this.requestSize,
     this.fit = BoxFit.cover,
-    this.service = ThumbnailService.instance,
+    this.service,
   });
 
   @override
@@ -29,13 +30,10 @@ class FileThumbnail extends StatefulWidget {
 }
 
 class _FileThumbnailState extends State<FileThumbnail> {
-  late Future<Result<ThumbnailResponse>> _future;
+  Future<Result<ThumbnailResponse>>? _future;
+  bool _hasStartedLoading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  ThumbnailService get _service => widget.service ?? ThumbnailService.instance;
 
   @override
   void didUpdateWidget(covariant FileThumbnail oldWidget) {
@@ -45,13 +43,14 @@ class _FileThumbnailState extends State<FileThumbnail> {
         oldWidget.requestSize != widget.requestSize ||
         oldWidget.fit != widget.fit ||
         oldWidget.service != widget.service) {
-      _future = _load();
+      _future = null;
+      _hasStartedLoading = false;
     }
   }
 
   Future<Result<ThumbnailResponse>> _load() {
     final target = _targetSize();
-    return widget.service.getThumbnail(
+    return _service.getThumbnail(
       client: widget.client,
       alias: widget.alias,
       path: widget.entry.path,
@@ -69,6 +68,14 @@ class _FileThumbnailState extends State<FileThumbnail> {
     return widget.size.round().clamp(24, 512);
   }
 
+  void _handleVisibilityChanged(VisibilityInfo info) {
+    if (_hasStartedLoading || info.visibleFraction <= 0) return;
+    _hasStartedLoading = true;
+    setState(() {
+      _future = _load();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.entry.isDirectory || !isImageFileName(widget.entry.name)) {
@@ -78,33 +85,39 @@ class _FileThumbnailState extends State<FileThumbnail> {
       return Icon(fd.icon, color: fd.color, size: widget.size);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: FutureBuilder<Result<ThumbnailResponse>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return _buildPlaceholder(context);
-          }
+    return VisibilityDetector(
+      key: ValueKey(
+        'thumb:${widget.alias}:${widget.entry.path}:${widget.requestSize ?? widget.size}:${widget.fit.name}',
+      ),
+      onVisibilityChanged: _handleVisibilityChanged,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: FutureBuilder<Result<ThumbnailResponse>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (_future == null || !snapshot.hasData) {
+              return _buildPlaceholder(context);
+            }
 
-          final result = snapshot.data!;
-          if (result.isErr || result.unwrap.bytes == null) {
-            return _buildFallback(context);
-          }
-
-          return Image.memory(
-            result.unwrap.bytes!,
-            width: widget.size,
-            height: widget.size,
-            fit: widget.fit,
-            filterQuality: FilterQuality.low,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) {
-              widget.service.reportDecodeFailure();
+            final result = snapshot.data!;
+            if (result.isErr || result.unwrap.bytes == null) {
               return _buildFallback(context);
-            },
-          );
-        },
+            }
+
+            return Image.memory(
+              result.unwrap.bytes!,
+              width: widget.size,
+              height: widget.size,
+              fit: widget.fit,
+              filterQuality: FilterQuality.low,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) {
+                _service.reportDecodeFailure();
+                return _buildFallback(context);
+              },
+            );
+          },
+        ),
       ),
     );
   }
