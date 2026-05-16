@@ -9,12 +9,19 @@ import '../../client/file_client.dart';
 typedef _CacheKey = String;
 
 class ThumbnailService {
-  ThumbnailService({int? cacheBudgetBytes, this.maxInFlight = 4})
-    : _cacheBudgetBytes = cacheBudgetBytes ?? _defaultCacheBudgetBytes();
+  ThumbnailService({
+    int? cacheBudgetBytes,
+    this.maxInFlight = 4,
+    bool? enableDebugLogs,
+    this.debugLogEvery = 200,
+  }) : _cacheBudgetBytes = cacheBudgetBytes ?? _defaultCacheBudgetBytes(),
+       enableDebugLogs = enableDebugLogs ?? kDebugMode;
 
   static final ThumbnailService instance = ThumbnailService();
 
   final int maxInFlight;
+  final bool enableDebugLogs;
+  final int debugLogEvery;
   final int _cacheBudgetBytes;
 
   final LinkedHashMap<_CacheKey, _CachedThumbnail> _cache = LinkedHashMap();
@@ -23,6 +30,29 @@ class ThumbnailService {
 
   int _cacheBytes = 0;
   int _activeRequests = 0;
+  int _requests = 0;
+  int _cacheHits = 0;
+  int _cacheMisses = 0;
+  int _coalescedRequests = 0;
+  int _networkSuccesses = 0;
+  int _networkErrors = 0;
+  int _decodeFailures = 0;
+  int _totalFetchMicros = 0;
+
+  int get cacheBudgetBytes => _cacheBudgetBytes;
+  int get cacheBytes => _cacheBytes;
+  int get cacheItems => _cache.length;
+
+  ThumbnailMetricsSnapshot get metricsSnapshot => ThumbnailMetricsSnapshot(
+    requests: _requests,
+    cacheHits: _cacheHits,
+    cacheMisses: _cacheMisses,
+    coalescedRequests: _coalescedRequests,
+    networkSuccesses: _networkSuccesses,
+    networkErrors: _networkErrors,
+    decodeFailures: _decodeFailures,
+    totalFetchMicros: _totalFetchMicros,
+  );
 
   Future<Result<ThumbnailResponse>> getThumbnail({
     required FileClient client,
@@ -32,13 +62,16 @@ class ThumbnailService {
     required int height,
     String fit = 'cover',
   }) async {
+    _requests++;
     final w = width.clamp(24, 512);
     final h = height.clamp(24, 512);
     final key = _makeKey(alias, path, w, h, fit);
 
     final cached = _cache.remove(key);
     if (cached != null) {
+      _cacheHits++;
       _cache[key] = cached;
+      _maybeDebugLog();
       return Ok(
         ThumbnailResponse(
           bytes: cached.bytes,
@@ -48,10 +81,17 @@ class ThumbnailService {
       );
     }
 
+    _cacheMisses++;
+
     final existing = _inFlight[key];
-    if (existing != null) return existing;
+    if (existing != null) {
+      _coalescedRequests++;
+      _maybeDebugLog();
+      return existing;
+    }
 
     final future = _withPermit(() async {
+      final stopwatch = Stopwatch()..start();
       final result = await client.getThumbnail(
         alias,
         path,
@@ -59,8 +99,11 @@ class ThumbnailService {
         height: h,
         fit: fit,
       );
+      stopwatch.stop();
+      _totalFetchMicros += stopwatch.elapsedMicroseconds;
 
       if (result.isOk) {
+        _networkSuccesses++;
         final thumbnail = result.unwrap;
         if (!thumbnail.notModified && thumbnail.bytes != null) {
           _store(
@@ -72,7 +115,10 @@ class ThumbnailService {
             ),
           );
         }
+      } else {
+        _networkErrors++;
       }
+      _maybeDebugLog();
       return result;
     });
 
@@ -87,6 +133,22 @@ class ThumbnailService {
   void clear() {
     _cache.clear();
     _cacheBytes = 0;
+  }
+
+  void resetMetrics() {
+    _requests = 0;
+    _cacheHits = 0;
+    _cacheMisses = 0;
+    _coalescedRequests = 0;
+    _networkSuccesses = 0;
+    _networkErrors = 0;
+    _decodeFailures = 0;
+    _totalFetchMicros = 0;
+  }
+
+  void reportDecodeFailure() {
+    _decodeFailures++;
+    _maybeDebugLog(force: true);
   }
 
   Future<T> _withPermit<T>(Future<T> Function() task) async {
@@ -146,6 +208,55 @@ class ThumbnailService {
       case TargetPlatform.fuchsia:
         return 64 * 1024 * 1024;
     }
+  }
+
+  void _maybeDebugLog({bool force = false}) {
+    if (!enableDebugLogs) return;
+    if (!force && (_requests == 0 || _requests % debugLogEvery != 0)) return;
+    final snapshot = metricsSnapshot;
+    debugPrint(
+      '[thumbnail] req=${snapshot.requests} '
+      'hit=${snapshot.cacheHits} miss=${snapshot.cacheMisses} '
+      'coalesced=${snapshot.coalescedRequests} '
+      'net_ok=${snapshot.networkSuccesses} net_err=${snapshot.networkErrors} '
+      'decode_err=${snapshot.decodeFailures} '
+      'avg_fetch_ms=${snapshot.averageFetchMs.toStringAsFixed(1)} '
+      'cache_items=$cacheItems cache_bytes=$cacheBytes',
+    );
+  }
+}
+
+class ThumbnailMetricsSnapshot {
+  final int requests;
+  final int cacheHits;
+  final int cacheMisses;
+  final int coalescedRequests;
+  final int networkSuccesses;
+  final int networkErrors;
+  final int decodeFailures;
+  final int totalFetchMicros;
+
+  const ThumbnailMetricsSnapshot({
+    required this.requests,
+    required this.cacheHits,
+    required this.cacheMisses,
+    required this.coalescedRequests,
+    required this.networkSuccesses,
+    required this.networkErrors,
+    required this.decodeFailures,
+    required this.totalFetchMicros,
+  });
+
+  double get hitRate {
+    final total = cacheHits + cacheMisses;
+    if (total == 0) return 0;
+    return cacheHits / total;
+  }
+
+  double get averageFetchMs {
+    if (networkSuccesses + networkErrors == 0) return 0;
+    final avgMicros = totalFetchMicros / (networkSuccesses + networkErrors);
+    return avgMicros / 1000.0;
   }
 }
 

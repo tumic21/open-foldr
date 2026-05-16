@@ -99,6 +99,10 @@ class _FileThumbnailState extends State<FileThumbnail> {
             fit: widget.fit,
             filterQuality: FilterQuality.low,
             gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) {
+              widget.service.reportDecodeFailure();
+              return _buildFallback(context);
+            },
           );
         },
       ),
