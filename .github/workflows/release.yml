@@ -178,6 +178,19 @@ jobs:
       - name: Build Linux bundle
         run: flutter build linux --release
 
+      - name: Prepare Flatpak icon asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "assets/icons/icon.png" ]]; then
+            cp assets/icons/icon.png flatpak/com.openfoldr.OpenFoldr.png
+          elif [[ -f "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" ]]; then
+            cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png flatpak/com.openfoldr.OpenFoldr.png
+          else
+            echo "Missing icon source for Flatpak manifest: flatpak/com.openfoldr.OpenFoldr.png"
+            exit 1
+          fi
+
       - name: Build Flatpak bundle
         run: |
           mkdir -p flatpak/bundle
@@ -224,6 +237,17 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi,aarch64-linux-android,x86_64-linux-android
+
+      - name: Prime rustup targets
+        run: |
+          rustup target add armv7-linux-androideabi
+          rustup target add aarch64-linux-android
+          rustup target add x86_64-linux-android
 
       - name: Install dependencies
         run: flutter pub get
