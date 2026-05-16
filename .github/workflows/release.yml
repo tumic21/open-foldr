@@ -280,7 +280,7 @@ jobs:
           retention-days: 7
 
   build-windows:
-    name: Build Windows Portable ZIP
+    name: Build Windows Installer And Portable ZIP
     runs-on: windows-latest
     needs: prepare-release
     timeout-minutes: 40
@@ -302,11 +302,59 @@ jobs:
       - name: Build Windows bundle
         run: flutter build windows --release
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          @"
+          [Setup]
+          AppId={{C7C6C7F8-6B95-4EA4-A45D-6A9F1FAF112A}
+          AppName=OpenFoldr
+          AppVersion=${{ needs.prepare-release.outputs.semver }}
+          AppPublisher=OpenFoldr
+          DefaultDirName={autopf}\OpenFoldr
+          DefaultGroupName=OpenFoldr
+          DisableProgramGroupPage=yes
+          OutputDir=dist
+          OutputBaseFilename=openfoldr-${{ needs.prepare-release.outputs.semver }}-windows-setup
+          Compression=lzma
+          SolidCompression=yes
+          WizardStyle=modern
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "build\\windows\\x64\\runner\\Release\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\\OpenFoldr"; Filename: "{app}\\open_foldr.exe"
+          Name: "{autodesktop}\\OpenFoldr"; Filename: "{app}\\open_foldr.exe"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\\open_foldr.exe"; Description: "Launch OpenFoldr"; Flags: nowait postinstall skipifsilent
+          "@ | Set-Content -Path installer.iss -Encoding UTF8
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
       - name: Create portable ZIP
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/openfoldr-${{ needs.prepare-release.outputs.semver }}-windows-portable.zip -Force
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          path: dist/*-windows-setup.exe
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
@@ -341,4 +389,5 @@ jobs:
           files: |
             dist/linux-flatpak/*.flatpak
             dist/android-apk/*.apk
+            dist/windows-installer/*.exe
             dist/windows-portable/*.zip
