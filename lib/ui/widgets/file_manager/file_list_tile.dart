@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../client/file_client.dart';
-import 'file_type_icon.dart';
+import 'file_thumbnail.dart';
 
 class FileListTile extends StatelessWidget {
+  final FileClient client;
+  final String alias;
   final FileEntry entry;
   final bool selected;
   final bool multiSelectMode;
@@ -17,6 +19,8 @@ class FileListTile extends StatelessWidget {
 
   const FileListTile({
     super.key,
+    required this.client,
+    required this.alias,
     required this.entry,
     this.selected = false,
     this.multiSelectMode = false,
@@ -50,12 +54,13 @@ class FileListTile extends StatelessWidget {
               value: selected,
               onChanged: onTap == null ? null : (_) => onTap!(),
             )
-          : (() {
-              final fd = entry.isDirectory
-                  ? folderIconData(context)
-                  : fileTypeIcon(entry.name, context);
-              return Icon(fd.icon, color: fd.color);
-            }()),
+          : FileThumbnail(
+              client: client,
+              alias: alias,
+              entry: entry,
+              size: 24,
+              fit: BoxFit.cover,
+            ),
       title: Text(entry.name, overflow: TextOverflow.ellipsis),
       subtitle: entry.isDirectory ? null : Text(_subtitle()),
       onTap: useGesture ? null : onTap,

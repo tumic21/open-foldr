@@ -152,6 +152,85 @@ void main() {
     });
   });
 
+  group('FileClient.getThumbnail', () {
+    test('returns thumbnail bytes and metadata on 200', () async {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final c = _client(
+        (_) async => http.Response.bytes(
+          bytes,
+          200,
+          headers: {
+            'etag': '"abc123"',
+            'content-type': 'image/jpeg',
+          },
+        ),
+      );
+
+      final result = await c.getThumbnail(
+        'docs',
+        '/photo.jpg',
+        width: 48,
+        height: 48,
+      );
+
+      expect(result.isOk, isTrue);
+      expect(result.unwrap.notModified, isFalse);
+      expect(result.unwrap.bytes, bytes);
+      expect(result.unwrap.etag, 'abc123');
+      expect(result.unwrap.contentType, 'image/jpeg');
+    });
+
+    test('returns notModified response on 304', () async {
+      final c = _client(
+        (_) async => http.Response(
+          '',
+          304,
+          headers: {'etag': '"same-etag"'},
+        ),
+      );
+
+      final result = await c.getThumbnail(
+        'docs',
+        '/photo.jpg',
+        width: 48,
+        height: 48,
+        ifNoneMatch: 'same-etag',
+      );
+
+      expect(result.isOk, isTrue);
+      expect(result.unwrap.notModified, isTrue);
+      expect(result.unwrap.etag, 'same-etag');
+      expect(result.unwrap.bytes, isNull);
+    });
+
+    test('sends expected thumbnail query parameters and if-none-match header', () async {
+      late Uri capturedUri;
+      late Map<String, String> capturedHeaders;
+      final c = _client((req) async {
+        capturedUri = req.url;
+        capturedHeaders = req.headers;
+        return http.Response.bytes(Uint8List(0), 200);
+      });
+
+      await c.getThumbnail(
+        'docs',
+        '/photo.jpg',
+        width: 128,
+        height: 96,
+        fit: 'contain',
+        ifNoneMatch: 'etag-x',
+      );
+
+      expect(capturedUri.path, '/v1/roots/docs/thumbnail');
+      expect(capturedUri.queryParameters['path'], '/photo.jpg');
+      expect(capturedUri.queryParameters['w'], '128');
+      expect(capturedUri.queryParameters['h'], '96');
+      expect(capturedUri.queryParameters['fit'], 'contain');
+      expect(capturedHeaders['if-none-match'], 'etag-x');
+      expect(capturedHeaders['authorization'], 'Bearer $_token');
+    });
+  });
+
   // ─── getMetadata ───────────────────────────────────────────────────────
 
   group('FileClient.getMetadata', () {

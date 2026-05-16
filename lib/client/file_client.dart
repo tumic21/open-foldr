@@ -214,6 +214,53 @@ class FileClient {
     }
   }
 
+  /// Fetches a server-generated thumbnail for an image file.
+  ///
+  /// [fit] accepts `cover` or `contain`.
+  /// When [ifNoneMatch] is provided and the thumbnail is unchanged,
+  /// returns [ThumbnailResponse.notModified].
+  Future<Result<ThumbnailResponse>> getThumbnail(
+    String alias,
+    String path, {
+    required int width,
+    required int height,
+    String fit = 'cover',
+    String? ifNoneMatch,
+  }) async {
+    final uri = Uri.parse('$baseUrl/roots/$alias/thumbnail').replace(
+      queryParameters: {
+        'path': path,
+        'w': '$width',
+        'h': '$height',
+        'fit': fit,
+      },
+    );
+    final headers = _authHeaders();
+    if (ifNoneMatch != null && ifNoneMatch.isNotEmpty) {
+      headers['if-none-match'] = ifNoneMatch;
+    }
+    try {
+      final res = await _http.get(uri, headers: headers);
+      if (res.statusCode == 304) {
+        return Ok(
+          ThumbnailResponse.notModified(etag: _normalizeEtag(res.headers['etag'])),
+        );
+      }
+      if (res.statusCode == 200) {
+        return Ok(
+          ThumbnailResponse(
+            bytes: res.bodyBytes,
+            etag: _normalizeEtag(res.headers['etag']),
+            contentType: res.headers['content-type'] ?? 'application/octet-stream',
+          ),
+        );
+      }
+      return _errFromBody(res);
+    } catch (e) {
+      return Err('NETWORK_ERROR', e.toString());
+    }
+  }
+
   // ─── Metadata ───────────────────────────────────────────────────────────
 
   /// Returns metadata (including the current `versionToken`) for a file.
@@ -449,6 +496,15 @@ class FileClient {
       return Err('SERVER_ERROR', 'HTTP ${res.statusCode}');
     }
   }
+
+  static String? _normalizeEtag(String? etag) {
+    if (etag == null || etag.isEmpty) return null;
+    final trimmed = etag.trim();
+    if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      return trimmed.substring(1, trimmed.length - 1);
+    }
+    return trimmed;
+  }
 }
 
 // ─── Data models ─────────────────────────────────────────────────────────────
@@ -527,6 +583,26 @@ class FileMetadata {
     ),
     versionToken: json['versionToken'] as String,
   );
+}
+
+/// Response model for thumbnail requests.
+class ThumbnailResponse {
+  final Uint8List? bytes;
+  final String? etag;
+  final String contentType;
+  final bool notModified;
+
+  const ThumbnailResponse({
+    required this.bytes,
+    required this.etag,
+    required this.contentType,
+    this.notModified = false,
+  });
+
+  const ThumbnailResponse.notModified({this.etag})
+    : bytes = null,
+      contentType = '',
+      notModified = true;
 }
 
 /// A single item result inside a batch operation response.

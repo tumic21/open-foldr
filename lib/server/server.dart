@@ -49,6 +49,7 @@ class OpenFoldrServer {
       ..get('/v1/roots', rootsListHandler(roots))
       ..get('/v1/roots/<alias>/entries', entriesHandler(roots, log))
       ..get('/v1/roots/<alias>/file', fileDownloadHandler(roots, log))
+      ..get('/v1/roots/<alias>/thumbnail', thumbnailHandler(roots, log))
       ..get('/v1/roots/<alias>/metadata', fileMetadataHandler(roots))
       // Phase 2: write, delete, batch
       ..put('/v1/roots/<alias>/file', fileUploadHandler(roots, log))

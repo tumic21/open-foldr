@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
@@ -381,9 +382,92 @@ Handler fileMetadataHandler(RootRegistry registry) {
   };
 }
 
+Handler thumbnailHandler(RootRegistry registry, ActivityLog _) {
+  return (Request request) async {
+    final alias = request.params['alias']!;
+    final root = registry.get(alias);
+    if (root == null) return _error(404, 'NOT_FOUND', 'Root not found');
+
+    final rawPath = request.url.queryParameters['path'] ?? '';
+    if (rawPath.isEmpty) {
+      return _error(400, 'INVALID_ARGUMENT', 'path is required');
+    }
+
+    final width = _parseThumbnailDimension(request.url.queryParameters['w']);
+    final height = _parseThumbnailDimension(request.url.queryParameters['h']);
+    final fit = _parseThumbnailFit(request.url.queryParameters['fit']);
+
+    final guard = registry.guard(alias)!;
+    final resolved = guard.resolve(_stripLeadingSlash(rawPath));
+    if (resolved.isErr) {
+      return _error(400, resolved.errorCode, resolved.errorMessage);
+    }
+
+    final file = File(resolved.unwrap);
+    if (!file.existsSync()) {
+      return _error(404, 'NOT_FOUND', 'File not found');
+    }
+
+    if (!_isLikelyImagePath(rawPath)) {
+      return _error(415, 'UNSUPPORTED_MEDIA_TYPE', 'Not an image file');
+    }
+
+    final source = img.decodeImage(await file.readAsBytes());
+    if (source == null) {
+      return _error(415, 'UNSUPPORTED_MEDIA_TYPE', 'Unsupported image format');
+    }
+
+    final resized = fit == 'cover'
+        ? _resizeCover(source, width, height)
+        : _resizeContain(source, width, height);
+
+    final hasAlpha = resized.hasAlpha;
+    final encoded = hasAlpha
+        ? img.encodePng(resized)
+        : img.encodeJpg(resized, quality: 75);
+    final contentType = hasAlpha ? 'image/png' : 'image/jpeg';
+
+    final versionToken = computeVersionToken(file.statSync());
+    final etag = sha256
+        .convert(utf8.encode('$versionToken:$width:$height:$fit:$contentType'))
+        .toString()
+        .substring(0, 16);
+
+    final incomingEtag = _normalizeEtag(request.headers['if-none-match']);
+    if (incomingEtag != null && incomingEtag == etag) {
+      return Response.notModified(
+        headers: {
+          'etag': '"$etag"',
+          'cache-control': 'private, max-age=300',
+        },
+      );
+    }
+
+    return Response.ok(
+      encoded,
+      headers: {
+        'content-type': contentType,
+        'content-length': '${encoded.length}',
+        'cache-control': 'private, max-age=300',
+        'etag': '"$etag"',
+      },
+    );
+  };
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const _json = {'content-type': 'application/json'};
+const _thumbnailMinDimension = 24;
+const _thumbnailMaxDimension = 512;
+const _supportedThumbnailExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'bmp',
+};
 
 /// Computes a lightweight version token from file stat fields.
 /// Does not read file content — uses last-modified time and size as etag.
@@ -426,6 +510,71 @@ Response _error(int status, String code, String message) => Response(
     'error': {'code': code, 'message': message},
   }),
 );
+
+int _parseThumbnailDimension(String? rawValue) {
+  final parsed = int.tryParse(rawValue ?? '') ?? 128;
+  return parsed.clamp(_thumbnailMinDimension, _thumbnailMaxDimension);
+}
+
+String _parseThumbnailFit(String? fit) {
+  if (fit == 'contain') return 'contain';
+  return 'cover';
+}
+
+String? _normalizeEtag(String? etag) {
+  if (etag == null || etag.isEmpty) return null;
+  final trimmed = etag.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.substring(1, trimmed.length - 1);
+  }
+  return trimmed;
+}
+
+bool _isLikelyImagePath(String path) {
+  final normalized = path.toLowerCase();
+  final dot = normalized.lastIndexOf('.');
+  if (dot <= 0 || dot == normalized.length - 1) return false;
+  final ext = normalized.substring(dot + 1);
+  return _supportedThumbnailExtensions.contains(ext);
+}
+
+img.Image _resizeContain(img.Image source, int targetW, int targetH) {
+  final widthRatio = targetW / source.width;
+  final heightRatio = targetH / source.height;
+  final ratio = widthRatio < heightRatio ? widthRatio : heightRatio;
+  final newW = (source.width * ratio).round().clamp(1, _thumbnailMaxDimension);
+  final newH = (source.height * ratio).round().clamp(1, _thumbnailMaxDimension);
+  return img.copyResize(
+    source,
+    width: newW,
+    height: newH,
+    interpolation: img.Interpolation.linear,
+  );
+}
+
+img.Image _resizeCover(img.Image source, int targetW, int targetH) {
+  final widthRatio = targetW / source.width;
+  final heightRatio = targetH / source.height;
+  final ratio = widthRatio > heightRatio ? widthRatio : heightRatio;
+  final scaledW = (source.width * ratio).round().clamp(1, 4096);
+  final scaledH = (source.height * ratio).round().clamp(1, 4096);
+
+  final scaled = img.copyResize(
+    source,
+    width: scaledW,
+    height: scaledH,
+    interpolation: img.Interpolation.linear,
+  );
+
+  final x = ((scaled.width - targetW) / 2).floor().clamp(0, scaled.width - 1);
+  final y = ((scaled.height - targetH) / 2).floor().clamp(
+    0,
+    scaled.height - 1,
+  );
+  final cropW = targetW <= scaled.width ? targetW : scaled.width;
+  final cropH = targetH <= scaled.height ? targetH : scaled.height;
+  return img.copyCrop(scaled, x: x, y: y, width: cropW, height: cropH);
+}
 
 class PairRequest {
   final String id;

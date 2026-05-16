@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../client/file_client.dart';
-import 'file_type_icon.dart';
+import 'file_thumbnail.dart';
 
 class FileGridTile extends StatelessWidget {
+  final FileClient client;
+  final String alias;
   final FileEntry entry;
   final bool selected;
   final bool multiSelectMode;
@@ -17,6 +19,8 @@ class FileGridTile extends StatelessWidget {
 
   const FileGridTile({
     super.key,
+    required this.client,
+    required this.alias,
     required this.entry,
     this.selected = false,
     this.multiSelectMode = false,
@@ -70,12 +74,13 @@ class FileGridTile extends StatelessWidget {
                       : null,
                 ),
               ),
-              (() {
-                final fd = entry.isDirectory
-                    ? folderIconData(context)
-                    : fileTypeIcon(entry.name, context);
-                return Icon(fd.icon, size: 48, color: fd.color);
-              }()),
+              FileThumbnail(
+                client: client,
+                alias: alias,
+                entry: entry,
+                size: 48,
+                fit: BoxFit.cover,
+              ),
               const SizedBox(height: 6),
               Text(
                 entry.name,

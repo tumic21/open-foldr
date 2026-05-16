@@ -3,6 +3,24 @@ import '../../../core/theme/app_theme.dart';
 
 typedef FileIconData = ({IconData icon, Color color});
 
+const Set<String> _imageExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'bmp',
+  'svg',
+  'heic',
+};
+
+bool isImageFileName(String name) {
+  final dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot == name.length - 1) return false;
+  final ext = name.substring(dot + 1).toLowerCase();
+  return _imageExtensions.contains(ext);
+}
+
 /// Returns folder icon data with color appropriate for current theme.
 FileIconData folderIconData(BuildContext context) {
   final brightness = Theme.of(context).brightness;

@@ -1229,6 +1229,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
           itemBuilder: (_, i) {
             final entry = visible[i];
             return FileGridTile(
+              client: widget.client,
+              alias: widget.alias,
               entry: entry,
               selected: _state.selectedPaths.contains(entry.path),
               multiSelectMode: _state.multiSelectMode,
@@ -1264,6 +1266,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         itemBuilder: (_, i) {
           final entry = visible[i];
           return FileListTile(
+            client: widget.client,
+            alias: widget.alias,
             entry: entry,
             selected: _state.selectedPaths.contains(entry.path),
             multiSelectMode: _state.multiSelectMode,
