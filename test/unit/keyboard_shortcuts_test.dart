@@ -220,6 +220,102 @@ void main() {
       expect(find.text('Cut to clipboard'), findsOneWidget);
     });
 
+    testWidgets('Delete shows friendly error when batch delete item fails',
+        (tester) async {
+      final client = FileClient(
+        baseUrl: 'http://localhost:7432/v1',
+        sessionToken: 'tok',
+        httpClient: MockClient((req) async {
+          if (req.url.path.contains('/list') ||
+              req.url.queryParameters.containsKey('path')) {
+            return http.Response(
+              '{"entries":${_encode([_file('a.txt')])}}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (req.url.path.contains('/batch/delete')) {
+            return http.Response(
+              '{"results":[{"path":"/a.txt","status":403,"message":"permission denied"}]}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response('{}', 200,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: client,
+        alias: 'docs',
+        role: 'owner',
+        watcherFactory: null,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Permission denied'), findsOneWidget);
+    });
+
+    testWidgets('Rename shows friendly permission error', (tester) async {
+      final client = FileClient(
+        baseUrl: 'http://localhost:7432/v1',
+        sessionToken: 'tok',
+        httpClient: MockClient((req) async {
+          if (req.url.path.contains('/list') ||
+              req.url.queryParameters.containsKey('path')) {
+            return http.Response(
+              '{"entries":${_encode([_dir('locked')])}}',
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (req.url.path.contains('/rename')) {
+            return http.Response(
+              '{"error":{"code":"PERMISSION_DENIED","message":"Host process does not have filesystem permission for this rename"}}',
+              403,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response('{}', 200,
+              headers: {'content-type': 'application/json'});
+        }),
+      );
+
+      await tester.pumpWidget(_wrap(FileManagerScreen(
+        client: client,
+        alias: 'docs',
+        role: 'owner',
+        watcherFactory: null,
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f2);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'locked_renamed');
+      await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Permission denied'), findsOneWidget);
+    });
+
     testWidgets('Backspace does not throw when in a sub-directory',
         (tester) async {
       final entries = <FileEntry>[];

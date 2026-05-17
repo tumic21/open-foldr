@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../client/file_client.dart';
 import '../../../client/watch_client.dart';
 import '../../../core/transfer_manager.dart';
+import '../../services/friendly_error_message.dart';
 import '../../widgets/file_manager/breadcrumb_bar.dart';
 import '../../widgets/file_manager/dialogs/confirm_delete_dialog.dart';
 import '../../widgets/file_manager/dialogs/conflict_dialog.dart';
@@ -265,7 +266,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       );
       Navigator.of(context).pop();
     } else {
-      _state.setError(result.errorMessage);
+      _state.setError(
+        friendlyErrorMessage(
+          code: result.errorCode,
+          fallbackMessage: result.errorMessage,
+          operation: 'load this folder',
+        ),
+      );
       _startWatcher();
     }
   }
@@ -366,7 +373,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         return;
       }
     } else {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'upload this file');
     }
   }
 
@@ -398,7 +405,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       _showConflictDialog(remotePath, bytes, latestToken);
       return;
     }
-    _showError(result.errorMessage);
+    _showResultError(result, operation: 'save this file');
   }
 
   // ─── Download ──────────────────────────────────────────────────────────────
@@ -538,7 +545,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (!mounted) return;
 
     if (result.isErr) {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'open this file');
       return;
     }
 
@@ -640,7 +647,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (result.isOk) {
       await _load();
     } else {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'delete this item');
     }
   }
 
@@ -664,7 +671,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (result.isOk) {
       await _load();
     } else {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'rename this item');
     }
   }
 
@@ -739,7 +746,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (result.isOk) {
       await _load();
     } else {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'create this file');
     }
   }
 
@@ -796,7 +803,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (result.isOk) {
       await _load();
     } else {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'create this folder');
     }
   }
 
@@ -867,6 +874,17 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  void _showResultError(Result<dynamic> result, {required String operation}) {
+    if (!result.isErr) return;
+    _showError(
+      friendlyErrorMessage(
+        code: result.errorCode,
+        fallbackMessage: result.errorMessage,
+        operation: operation,
+      ),
     );
   }
 
@@ -1416,12 +1434,27 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (clip == null) return;
     final destination = _state.currentPath;
 
+    Result<List<BatchResult>> result;
     if (clip.operation == 'copy') {
-      await widget.client.batchCopy(widget.alias, clip.items, destination);
+      result = await widget.client.batchCopy(widget.alias, clip.items, destination);
     } else {
-      await widget.client.batchMove(widget.alias, clip.items, destination);
+      result = await widget.client.batchMove(widget.alias, clip.items, destination);
     }
     if (!mounted) return;
+
+    if (result.isErr) {
+      _showResultError(
+        result,
+        operation: clip.operation == 'copy' ? 'copy selected items' : 'move selected items',
+      );
+      return;
+    }
+
+    _showBatchFailures(
+      result.unwrap,
+      operation: clip.operation == 'copy' ? 'copy selected items' : 'move selected items',
+    );
+
     if (clip.operation == 'cut') _state.clearClipboard();
     _state.clearSelection();
     await _load();
@@ -1432,13 +1465,57 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final confirmed = await showConfirmDeleteDialog(context, itemCount: count);
     if (!confirmed) return;
 
-    await widget.client.batchDelete(
+    final result = await widget.client.batchDelete(
       widget.alias,
       _state.selectedPaths.toList(),
     );
     if (!mounted) return;
+
+    if (result.isErr) {
+      _showResultError(result, operation: 'delete selected items');
+      return;
+    }
+
+    _showBatchFailures(result.unwrap, operation: 'delete selected items');
+
     _state.clearSelection();
     await _load();
+  }
+
+  void _showBatchFailures(List<BatchResult> results, {required String operation}) {
+    final failures = results.where((item) => !item.isSuccess).toList(growable: false);
+    if (failures.isEmpty) return;
+
+    final first = failures.first;
+    final message = friendlyErrorMessage(
+      code: _errorCodeFromBatchFailure(first),
+      fallbackMessage: first.message,
+      operation: operation,
+    );
+
+    if (failures.length == 1) {
+      _showError(message);
+      return;
+    }
+
+    _showError('$message (${failures.length} items failed)');
+  }
+
+  String _errorCodeFromBatchFailure(BatchResult result) {
+    final details = result.message.toLowerCase();
+    if (details.contains('permission denied') ||
+        details.contains('access is denied') ||
+        details.contains('operation not permitted') ||
+        details.contains('read-only file system')) {
+      return 'PERMISSION_DENIED';
+    }
+
+    if (result.status == 400) return 'INVALID_ARGUMENT';
+    if (result.status == 403) return 'FORBIDDEN';
+    if (result.status == 404) return 'NOT_FOUND';
+    if (result.status == 409) return 'ALREADY_EXISTS';
+    if (result.status >= 500) return 'SERVER_ERROR';
+    return 'SERVER_ERROR';
   }
 
   void _showNewItemMenu() {

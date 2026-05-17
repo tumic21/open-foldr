@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../client/file_client.dart';
 import '../../../core/client_credential_store.dart';
+import '../../services/friendly_error_message.dart';
 import 'file_manager_screen.dart';
 
 class ExplorerScreen extends StatefulWidget {
@@ -110,7 +111,11 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
 
       if (result.isErr) {
         final code = result.errorCode;
-        final message = result.errorMessage;
+        final message = friendlyErrorMessage(
+          code: code,
+          fallbackMessage: result.errorMessage,
+          operation: 'connect to this host',
+        );
         if (code == 'NO_ACTIVE_SECRET' || code == 'SECRET_EXPIRED') {
           throw _PairingCodeException(
             'Pairing code is expired or already used. Ask host for a new code.',
@@ -153,7 +158,11 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = friendlyErrorMessage(
+          code: 'SERVER_ERROR',
+          fallbackMessage: e.toString(),
+          operation: 'connect to this host',
+        );
         _loading = false;
       });
     }
@@ -172,7 +181,11 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
       });
     } else {
       setState(() {
-        _error = result.errorMessage;
+        _error = friendlyErrorMessage(
+          code: result.errorCode,
+          fallbackMessage: result.errorMessage,
+          operation: 'load shared folders',
+        );
         _loading = false;
       });
     }

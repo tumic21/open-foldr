@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../client/file_client.dart';
+import '../../services/friendly_error_message.dart';
 
 class ImagePreviewScreen extends StatefulWidget {
   final FileClient client;
@@ -72,7 +73,11 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
     if (result.isErr) {
       setState(() {
         _loading = false;
-        _error = result.errorMessage;
+        _error = friendlyErrorMessage(
+          code: result.errorCode,
+          fallbackMessage: result.errorMessage,
+          operation: 'download this image',
+        );
       });
       return;
     }

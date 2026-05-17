@@ -493,7 +493,25 @@ class FileClient {
       final message = err?['message'] as String? ?? 'HTTP ${res.statusCode}';
       return Err(code, message);
     } catch (_) {
-      return Err('SERVER_ERROR', 'HTTP ${res.statusCode}');
+      switch (res.statusCode) {
+        case 400:
+          return Err('INVALID_ARGUMENT', 'Invalid request sent to host');
+        case 401:
+          return Err('UNAUTHORIZED', 'Session expired. Reconnect and try again');
+        case 403:
+          return Err('FORBIDDEN', 'You do not have permission for this action');
+        case 404:
+          return Err('NOT_FOUND', 'Requested file or folder was not found');
+        case 409:
+          return Err('ALREADY_EXISTS', 'A file or folder with this name already exists');
+        case 500:
+          return Err(
+            'SERVER_ERROR',
+            'Host failed to complete the request. Check host filesystem permissions and try again',
+          );
+        default:
+          return Err('SERVER_ERROR', 'Request failed (HTTP ${res.statusCode})');
+      }
     }
   }
 

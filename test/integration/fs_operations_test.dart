@@ -199,6 +199,33 @@ void main() {
       final res = await fsPost('rename', {'from': '/seed.txt'}, editorToken);
       expect(res.statusCode, 400);
     });
+
+    test(
+      'returns PERMISSION_DENIED when host cannot write destination directory',
+      () async {
+        final lockedDir = Directory('${tempDir.path}/locked')..createSync();
+        File('${lockedDir.path}/seed.txt').writeAsStringSync('locked');
+
+        final chmodResult = Process.runSync('chmod', ['0555', lockedDir.path]);
+        expect(chmodResult.exitCode, 0,
+            reason: 'chmod failed: ${chmodResult.stderr}');
+
+        try {
+          final res = await fsPost(
+            'rename',
+            {'from': '/locked/seed.txt', 'to': '/locked/renamed.txt'},
+            editorToken,
+          );
+          expect(res.statusCode, 403);
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final error = body['error'] as Map<String, dynamic>;
+          expect(error['code'], 'PERMISSION_DENIED');
+        } finally {
+          Process.runSync('chmod', ['0755', lockedDir.path]);
+        }
+      },
+      skip: Platform.isWindows,
+    );
   });
 
   // ─── copy ─────────────────────────────────────────────────────────────────

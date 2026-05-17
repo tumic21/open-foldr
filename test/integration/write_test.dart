@@ -294,6 +294,37 @@ void main() {
       );
       expect(res.statusCode, 400);
     });
+
+    test(
+      'delete returns PERMISSION_DENIED when host cannot write target directory',
+      () async {
+        final lockedDir = Directory('${tempDir.path}/locked')..createSync();
+        final lockedFile = File('${lockedDir.path}/locked.txt')
+          ..writeAsStringSync('nope');
+
+        final chmodResult = Process.runSync('chmod', ['0555', lockedDir.path]);
+        expect(chmodResult.exitCode, 0,
+            reason: 'chmod failed: ${chmodResult.stderr}');
+
+        try {
+          final uri = Uri.parse('$base/roots/test/file')
+              .replace(queryParameters: {'path': '/locked/locked.txt'});
+          final res = await http.delete(
+            uri,
+            headers: {'authorization': 'Bearer $ownerToken'},
+          );
+
+          expect(res.statusCode, 403);
+          expect(lockedFile.existsSync(), isTrue);
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final error = body['error'] as Map<String, dynamic>;
+          expect(error['code'], 'PERMISSION_DENIED');
+        } finally {
+          Process.runSync('chmod', ['0755', lockedDir.path]);
+        }
+      },
+      skip: Platform.isWindows,
+    );
   });
 
   // ─── Batch Delete ──────────────────────────────────────────────────────────
@@ -355,5 +386,45 @@ void main() {
       );
       expect(traversalResult['status'], 400);
     });
+
+    test(
+      'batch delete returns per-item 403 when host lacks filesystem permission',
+      () async {
+        final lockedDir = Directory('${tempDir.path}/batch_locked')
+          ..createSync();
+        final lockedFile = File('${lockedDir.path}/blocked.txt')
+          ..writeAsStringSync('blocked');
+
+        final chmodResult = Process.runSync('chmod', ['0555', lockedDir.path]);
+        expect(chmodResult.exitCode, 0,
+            reason: 'chmod failed: ${chmodResult.stderr}');
+
+        try {
+          final uri = Uri.parse('$base/roots/test/batch/delete');
+          final res = await http.post(
+            uri,
+            headers: {
+              'authorization': 'Bearer $ownerToken',
+              'content-type': 'application/json',
+            },
+            body: jsonEncode({
+              'paths': ['/batch_locked/blocked.txt'],
+            }),
+          );
+
+          expect(res.statusCode, 200);
+          expect(lockedFile.existsSync(), isTrue);
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final results = body['results'] as List;
+          expect(results, hasLength(1));
+          final item = results.first as Map<String, dynamic>;
+          expect(item['status'], 403);
+          expect((item['message'] as String).toLowerCase(), contains('permission'));
+        } finally {
+          Process.runSync('chmod', ['0755', lockedDir.path]);
+        }
+      },
+      skip: Platform.isWindows,
+    );
   });
 }

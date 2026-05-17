@@ -24,6 +24,7 @@ import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
 
 import '../../../client/file_client.dart';
+import '../../services/friendly_error_message.dart';
 import '../../widgets/file_manager/dialogs/conflict_dialog.dart';
 
 // ─── Language descriptor ─────────────────────────────────────────────────────
@@ -180,7 +181,11 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     if (result.isErr) {
       setState(() {
         _loading = false;
-        _loadError = result.errorMessage;
+        _loadError = friendlyErrorMessage(
+          code: result.errorCode,
+          fallbackMessage: result.errorMessage,
+          operation: 'download this file',
+        );
       });
       return;
     }
@@ -254,7 +259,13 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text('Save failed: ${result.errorMessage}'),
+          content: Text(
+            friendlyErrorMessage(
+              code: result.errorCode,
+              fallbackMessage: result.errorMessage,
+              operation: 'save this file',
+            ),
+          ),
           backgroundColor: Colors.red),
     );
   }

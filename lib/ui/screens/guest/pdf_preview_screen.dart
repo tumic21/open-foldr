@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../client/file_client.dart';
+import '../../services/friendly_error_message.dart';
 
 class PdfPreviewScreen extends StatefulWidget {
   final FileClient client;
@@ -59,7 +60,11 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     if (result.isErr) {
       setState(() {
         _loading = false;
-        _error = result.errorMessage;
+        _error = friendlyErrorMessage(
+          code: result.errorCode,
+          fallbackMessage: result.errorMessage,
+          operation: 'download this file',
+        );
       });
       return;
     }

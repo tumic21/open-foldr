@@ -139,12 +139,16 @@ Handler fileDeleteHandler(RootRegistry registry, ActivityLog log) {
     final file = File(targetPath);
     final dir = Directory(targetPath);
 
-    if (file.existsSync()) {
-      await file.delete();
-    } else if (dir.existsSync()) {
-      await dir.delete(recursive: true);
-    } else {
-      return _error(404, 'NOT_FOUND', 'Path not found');
+    try {
+      if (file.existsSync()) {
+        await file.delete();
+      } else if (dir.existsSync()) {
+        await dir.delete(recursive: true);
+      } else {
+        return _error(404, 'NOT_FOUND', 'Path not found');
+      }
+    } on FileSystemException catch (e) {
+      return _mapDeleteFileSystemErrorResponse(e);
     }
 
     log.record(
@@ -236,11 +240,18 @@ Handler batchDeleteHandler(RootRegistry registry, ActivityLog log) {
         } else {
           results.add({'path': rawPath, 'status': 404, 'message': 'not found'});
         }
+      } on FileSystemException catch (e) {
+        final mapped = _mapDeleteFileSystemError(e);
+        results.add({
+          'path': rawPath,
+          'status': mapped.$1,
+          'message': mapped.$2,
+        });
       } catch (e) {
         results.add({
           'path': rawPath,
           'status': 500,
-          'message': 'Internal error: ${e.toString()}',
+          'message': 'Delete failed',
         });
       }
     }
@@ -266,4 +277,42 @@ Future<Map<String, dynamic>?> _parseJson(Request request) async {
   } catch (_) {
     return null;
   }
+}
+
+(int, String) _mapDeleteFileSystemError(FileSystemException error) {
+  final errno = error.osError?.errorCode;
+  if (errno == 13 || errno == 5 || errno == 1 || errno == 30) {
+    return (
+      403,
+      'Host process does not have filesystem permission to delete this item',
+    );
+  }
+
+  if (errno == 2) {
+    return (404, 'Path not found');
+  }
+
+  final details = '${error.osError?.message ?? error.message}'.toLowerCase();
+  if (details.contains('permission denied') ||
+      details.contains('access is denied') ||
+      details.contains('operation not permitted') ||
+      details.contains('read-only file system')) {
+    return (
+      403,
+      'Host process does not have filesystem permission to delete this item',
+    );
+  }
+
+  return (500, 'Delete failed');
+}
+
+Response _mapDeleteFileSystemErrorResponse(FileSystemException error) {
+  final mapped = _mapDeleteFileSystemError(error);
+  if (mapped.$1 == 403) {
+    return _error(mapped.$1, 'PERMISSION_DENIED', mapped.$2);
+  }
+  if (mapped.$1 == 404) {
+    return _error(mapped.$1, 'NOT_FOUND', mapped.$2);
+  }
+  return _error(mapped.$1, 'INTERNAL', mapped.$2);
 }

@@ -432,6 +432,21 @@ void main() {
       final result = await c.listRoots();
       expect(result.isErr, isTrue);
       expect(result.errorCode, 'SERVER_ERROR');
+      expect(
+        result.errorMessage,
+        contains('Host failed to complete the request'),
+      );
+    });
+
+    test('malformed 403 response maps to FORBIDDEN', () async {
+      final c = _client((_) async => http.Response('denied', 403));
+      final result = await c.rename('docs', '/a.txt', '/b.txt');
+      expect(result.isErr, isTrue);
+      expect(result.errorCode, 'FORBIDDEN');
+      expect(
+        result.errorMessage,
+        'You do not have permission for this action',
+      );
     });
   });
 }

@@ -44,9 +44,11 @@ extension _FileManagerScreenDragDrop on _FileManagerScreenState {
     );
     if (!mounted) return;
     if (result.isErr) {
-      _showError(result.errorMessage);
+      _showResultError(result, operation: 'move these items');
       return;
     }
+
+    _showBatchFailures(result.unwrap, operation: 'move these items');
     _state.clearSelection();
     await _load();
   }

@@ -157,19 +157,27 @@ Handler renameHandler(RootRegistry registry, ActivityLog log) {
       } else {
         await sourceDir.rename(toPath);
       }
-    } on FileSystemException {
-      // Cross-device fallback.
-      if (sourceIsFile) {
-        final destFile = File(toPath);
-        await sourceFile.copy(toPath);
-        await sourceFile.delete();
-        // Verify the destination was actually written before deleting source.
-        if (!destFile.existsSync()) {
-          return _error(500, 'INTERNAL', 'Cross-device rename failed');
+    } on FileSystemException catch (e) {
+      // Cross-device moves can fail with EXDEV and require copy+delete.
+      if (!_isCrossDeviceRenameError(e)) {
+        return _mapFileSystemRenameError(e);
+      }
+
+      try {
+        if (sourceIsFile) {
+          final destFile = File(toPath);
+          await sourceFile.copy(toPath);
+          await sourceFile.delete();
+          // Verify the destination was actually written before deleting source.
+          if (!destFile.existsSync()) {
+            return _error(500, 'INTERNAL', 'Rename failed');
+          }
+        } else {
+          await _copyDirectoryRecursive(sourceDir, Directory(toPath));
+          await sourceDir.delete(recursive: true);
         }
-      } else {
-        await _copyDirectoryRecursive(sourceDir, Directory(toPath));
-        await sourceDir.delete(recursive: true);
+      } on FileSystemException catch (fallbackError) {
+        return _mapFileSystemRenameError(fallbackError);
       }
     }
 
@@ -559,6 +567,46 @@ Future<Map<String, dynamic>?> _parseJson(Request request) async {
   } catch (_) {
     return null;
   }
+}
+
+Response _mapFileSystemRenameError(FileSystemException error) {
+  final errno = error.osError?.errorCode;
+  if (errno == 13 || errno == 5 || errno == 1 || errno == 30) {
+    return _error(
+      403,
+      'PERMISSION_DENIED',
+      'Host process does not have filesystem permission for this rename',
+    );
+  }
+
+  if (errno == 17) {
+    return _error(409, 'ALREADY_EXISTS', 'Target path already exists');
+  }
+
+  if (errno == 2) {
+    return _error(404, 'NOT_FOUND', 'Source path not found');
+  }
+
+  final details = '${error.osError?.message ?? error.message}'.toLowerCase();
+  if (details.contains('permission denied') ||
+      details.contains('access is denied') ||
+      details.contains('operation not permitted') ||
+      details.contains('read-only file system')) {
+    return _error(
+      403,
+      'PERMISSION_DENIED',
+      'Host process does not have filesystem permission for this rename',
+    );
+  }
+
+  return _error(500, 'INTERNAL', 'Rename failed');
+}
+
+bool _isCrossDeviceRenameError(FileSystemException error) {
+  final errno = error.osError?.errorCode;
+  if (errno == 18) return true; // EXDEV
+  final details = '${error.osError?.message ?? error.message}'.toLowerCase();
+  return details.contains('cross-device link');
 }
 
 /// Recursively copies [source] directory into [destination].
