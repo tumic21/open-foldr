@@ -132,6 +132,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   final Map<String, UploadProgressItem> _uploadProgress = {};
   final Map<String, UploadProgressItem> _downloadProgress = {};
   final Map<String, _DownloadControlState> _downloadControls = {};
+  final Set<Timer> _downloadCleanupTimers = <Timer>{};
   int _roleRefreshFailures = 0;
   static const _maxRoleRefreshFailures = 3;
 
@@ -164,6 +165,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _searchController.dispose();
     _roleRefreshTimer?.cancel();
     _watchReloadDebounce?.cancel();
+    for (final timer in _downloadCleanupTimers) {
+      timer.cancel();
+    }
+    _downloadCleanupTimers.clear();
     _watcher?.dispose();
     super.dispose();
   }
@@ -529,13 +534,16 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     } finally {
       downloadManager.dispose();
       if (mounted) {
-        Future<void>.delayed(const Duration(seconds: 2), () {
+        late final Timer cleanupTimer;
+        cleanupTimer = Timer(const Duration(seconds: 2), () {
+          _downloadCleanupTimers.remove(cleanupTimer);
           if (!mounted) return;
           setState(() {
             _downloadProgress.remove(remotePath);
             _downloadControls.remove(remotePath);
           });
         });
+        _downloadCleanupTimers.add(cleanupTimer);
       }
     }
   }

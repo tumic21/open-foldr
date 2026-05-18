@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import 'package:open_foldr/client/file_client.dart';
 import 'package:open_foldr/ui/screens/guest/file_manager_screen.dart';
@@ -69,6 +70,19 @@ Widget _wrap(Widget child) => MaterialApp(home: child);
 // ─── Search — unit tests ──────────────────────────────────────────────────────
 
 void main() {
+  late Duration previousVisibilityUpdateInterval;
+
+  setUpAll(() {
+    previousVisibilityUpdateInterval =
+        VisibilityDetectorController.instance.updateInterval;
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
+  tearDownAll(() {
+    VisibilityDetectorController.instance.updateInterval =
+        previousVisibilityUpdateInterval;
+  });
+
   group('FileManagerState — search', () {
     test('filteredEntries returns all entries when query is empty', () {
       final s = FileManagerState();

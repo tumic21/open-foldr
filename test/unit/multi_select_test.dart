@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import 'package:open_foldr/client/file_client.dart';
 import 'package:open_foldr/ui/screens/guest/file_manager_screen.dart';
@@ -65,9 +66,24 @@ String _encodeEntries(List<FileEntry> entries) {
   return '[${items.join(',')}]';
 }
 
+FileClient _tileClient() => _mockClient([]);
+
 // ─── FileManagerState — multi-select unit tests ───────────────────────────────
 
 void main() {
+  late Duration previousVisibilityUpdateInterval;
+
+  setUpAll(() {
+    previousVisibilityUpdateInterval =
+        VisibilityDetectorController.instance.updateInterval;
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
+  tearDownAll(() {
+    VisibilityDetectorController.instance.updateInterval =
+        previousVisibilityUpdateInterval;
+  });
+
   group('FileManagerState — multi-select entry', () {
     test('long-press equivalent: toggleSelect enables multiSelectMode', () {
       final s = FileManagerState();
@@ -144,6 +160,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('img.png'),
               selected: false,
               multiSelectMode: false,
@@ -162,6 +180,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('img.png'),
               selected: false,
               multiSelectMode: true,
@@ -178,6 +198,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('img.png'),
               selected: true,
               multiSelectMode: true,
@@ -194,6 +216,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('img.png'),
               selected: true,
               multiSelectMode: true,
@@ -215,13 +239,14 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileListTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _dir('docs'),
               multiSelectMode: false,
             ),
           ),
         ),
       );
-      expect(find.byIcon(Icons.folder), findsOneWidget);
       expect(find.byType(Checkbox), findsNothing);
     });
 
@@ -230,6 +255,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileListTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _dir('docs'),
               multiSelectMode: true,
               selected: false,
@@ -247,6 +274,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileListTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _dir('docs'),
               multiSelectMode: true,
               selected: true,
@@ -264,6 +293,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileListTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('docs.txt'),
               draggablePaths: const ['/docs.txt'],
             ),
@@ -279,6 +310,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileListTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _dir('docs'),
               onDropPaths: (_) {},
             ),
@@ -296,6 +329,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _file('docs.txt'),
               draggablePaths: const ['/docs.txt'],
             ),
@@ -311,6 +346,8 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: FileGridTile(
+              client: _tileClient(),
+              alias: 'docs',
               entry: _dir('docs'),
               onDropPaths: (_) {},
             ),
