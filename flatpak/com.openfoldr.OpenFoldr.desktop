@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenFoldr
+Comment=Cross-platform local network directory sync and collaboration
+Exec=open_foldr
+Icon=com.openfoldr.OpenFoldr
+Categories=Network;FileTools;
+Terminal=false
+StartupNotify=true

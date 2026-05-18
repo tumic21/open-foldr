@@ -1,0 +1,58 @@
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dart and Flutter
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+
+# Flutter platform and generated artifacts
+**/android/.gradle/
+**/android/local.properties
+**/ios/Pods/
+**/ios/.symlinks/
+**/macos/Pods/
+**/windows/flutter/ephemeral/
+**/windows/flutter/generated_plugin_registrant.cc
+**/windows/flutter/generated_plugin_registrant.h
+**/windows/flutter/generated_plugins.cmake
+**/linux/flutter/ephemeral/
+**/linux/flutter/generated_plugin_registrant.cc
+**/linux/flutter/generated_plugin_registrant.h
+**/linux/flutter/generated_plugins.cmake
+**/web/flutter_service_worker.js
+**/web/flutter_bootstrap.js
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Coverage
+coverage/
+
+# Environment files
+.env
+
+
+# Flatpak generated artifacts
+flatpak/bundle/
+flatpak/.flatpak-builder/
+flatpak/repo/
+flatpak/OpenFoldr.flatpak
+flatpak/com.openfoldr.OpenFoldr.png
+flatpak/openfoldr-signing-key.asc
+flatpak/openfoldr-signing-key.gpg
+flatpak/openfoldr.flatpakrepo
+
+
+_project

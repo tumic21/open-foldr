@@ -1,0 +1,36 @@
+app-id: com.openfoldr.OpenFoldr
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: open_foldr
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=host
+modules:
+  - name: open-foldr
+    buildsystem: simple
+    build-commands:
+      - install -d /app/bin
+      - >-
+        sh -c 'if [ -d bundle ]; then SRC=bundle; else SRC=.; fi;
+        cp -a "$SRC"/open_foldr /app/bin/;
+        cp -a "$SRC"/lib /app/bin/;
+        cp -a "$SRC"/data /app/bin/'
+      - install -d /app/share/applications
+      - install -d /app/share/icons/hicolor/256x256/apps
+      - install -d /app/share/metainfo
+      - install -m 0644 com.openfoldr.OpenFoldr.desktop /app/share/applications/com.openfoldr.OpenFoldr.desktop
+      - install -m 0644 com.openfoldr.OpenFoldr.png /app/share/icons/hicolor/256x256/apps/com.openfoldr.OpenFoldr.png
+      - install -m 0644 com.openfoldr.OpenFoldr.metainfo.xml /app/share/metainfo/com.openfoldr.OpenFoldr.metainfo.xml
+    sources:
+      - type: dir
+        path: bundle
+      - type: file
+        path: com.openfoldr.OpenFoldr.desktop
+      - type: file
+        path: com.openfoldr.OpenFoldr.metainfo.xml
+      - type: file
+        path: com.openfoldr.OpenFoldr.png

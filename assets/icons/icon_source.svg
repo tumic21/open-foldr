@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Background gradient: deep navy to teal -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0D2447"/>
+      <stop offset="100%" stop-color="#0A5568"/>
+    </linearGradient>
+    <!-- Folder body gradient: golden amber -->
+    <linearGradient id="folderGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFD54F"/>
+      <stop offset="100%" stop-color="#F9A825"/>
+    </linearGradient>
+    <!-- Folder tab gradient: slightly darker -->
+    <linearGradient id="tabGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="100%" stop-color="#FFB300"/>
+    </linearGradient>
+    <!-- Drop shadow filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <!-- Inner shadow / folder depth -->
+    <filter id="folderShadow" x="-5%" y="-5%" width="115%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#E65100" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="1024" height="1024" rx="210" fill="url(#bgGrad)"/>
+
+  <!-- Subtle background glow/texture: center radial overlay -->
+  <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#1E5799" stop-opacity="0.3"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1024" height="1024" rx="210" fill="url(#bgGlow)"/>
+
+  <!-- === FOLDER === -->
+
+  <!-- Folder tab (upper-left bump) -->
+  <path d="M 148 345 L 148 270 Q 148 248 170 248 L 418 248 Q 436 248 446 264 L 480 345 Z"
+        fill="url(#tabGrad)" filter="url(#folderShadow)"/>
+
+  <!-- Folder body with drop shadow -->
+  <rect x="148" y="335" width="728" height="472" rx="32"
+        fill="url(#folderGrad)" filter="url(#shadow)"/>
+
+  <!-- Folder top edge (darker band to simulate depth / open folder) -->
+  <rect x="148" y="335" width="728" height="44" rx="22"
+        fill="#F59F00" opacity="0.55"/>
+
+  <!-- Paper/content inside folder (lighter inset to show open) -->
+  <rect x="192" y="405" width="640" height="376" rx="18"
+        fill="#FFFDE7" opacity="0.18"/>
+
+  <!-- === NETWORK / WIFI ARCS inside folder === -->
+  <!-- Arcs centered at (512, 660), curving upward  -->
+
+  <!-- Outer arc (radius 178) -->
+  <path d="M 334 660 A 178 178 0 0 1 690 660"
+        stroke="white" stroke-width="34" fill="none"
+        stroke-linecap="round" opacity="0.90"/>
+
+  <!-- Middle arc (radius 115) -->
+  <path d="M 397 660 A 115 115 0 0 1 627 660"
+        stroke="white" stroke-width="34" fill="none"
+        stroke-linecap="round" opacity="0.90"/>
+
+  <!-- Inner arc (radius 58) -->
+  <path d="M 454 660 A 58 58 0 0 1 570 660"
+        stroke="white" stroke-width="34" fill="none"
+        stroke-linecap="round" opacity="0.90"/>
+
+  <!-- Center dot -->
+  <circle cx="512" cy="662" r="26" fill="white" opacity="0.95"/>
+
+  <!-- Small highlight on folder tab (gloss) -->
+  <ellipse cx="270" cy="268" rx="68" ry="18"
+           fill="white" opacity="0.20"/>
+
+  <!-- Small highlight on folder body top (gloss) -->
+  <ellipse cx="512" cy="350" rx="220" ry="14"
+           fill="white" opacity="0.15"/>
+</svg>

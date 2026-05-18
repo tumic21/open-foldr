@@ -1,0 +1,393 @@
+name: Release
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      tag: ${{ steps.version.outputs.tag }}
+      new_version: ${{ steps.version.outputs.new_version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Preflight platform file checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            "linux/flutter/CMakeLists.txt"
+            "windows/flutter/CMakeLists.txt"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing required file: $file"
+              echo "Make sure platform Flutter CMake files are tracked in git."
+              exit 1
+            fi
+          done
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current="$(grep '^version:' pubspec.yaml | awk '{print $2}')"
+
+          if [[ ! "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)$ ]]; then
+            echo "Unsupported pubspec.yaml version format: $current"
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          build="${BASH_REMATCH[4]}"
+
+          case "${{ inputs.bump }}" in
+            none)
+              ;;
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "Unsupported bump type: ${{ inputs.bump }}"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${{ inputs.bump }}" != "none" ]]; then
+            build=$((build + 1))
+          fi
+
+          semver="${major}.${minor}.${patch}"
+          new_version="${semver}+${build}"
+          branch_name="${GITHUB_REF_NAME}"
+          prerelease="false"
+
+          if [[ "$branch_name" == "develop" ]]; then
+            tag="v${semver}-dev.${GITHUB_RUN_NUMBER}"
+            prerelease="true"
+          else
+            tag="v${semver}"
+          fi
+
+          if git ls-remote --tags origin | grep -q "refs/tags/${tag}$"; then
+            echo "Tag already exists: ${tag}"
+            exit 1
+          fi
+
+          echo "semver=${semver}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+
+      - name: Update pubspec version
+        run: |
+          sed -i "s/^version: .*/version: ${{ steps.version.outputs.new_version }}/" pubspec.yaml
+
+      - name: Commit release version
+        run: |
+          git add pubspec.yaml
+          if git diff --cached --quiet; then
+            echo "No version change to commit"
+          else
+            git commit -m "chore(release): ${{ steps.version.outputs.semver }}"
+            git push origin HEAD
+          fi
+
+      - name: Create and push tag
+        run: |
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+  build-flatpak:
+    name: Build Linux Flatpak
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            imagemagick \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            flatpak \
+            flatpak-builder
+
+      - name: Add Flathub remote
+        run: |
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak runtime and SDK
+        run: |
+          sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux bundle
+        run: flutter build linux --release
+
+      - name: Prepare Flatpak icon asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "assets/icons/icon.png" ]]; then
+            convert assets/icons/icon.png -resize 512x512 flatpak/com.openfoldr.OpenFoldr.png
+          elif [[ -f "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" ]]; then
+            cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png flatpak/com.openfoldr.OpenFoldr.png
+          else
+            echo "Missing icon source for Flatpak manifest: flatpak/com.openfoldr.OpenFoldr.png"
+            exit 1
+          fi
+
+      - name: Build Flatpak bundle
+        run: |
+          mkdir -p flatpak/bundle
+          cp -a build/linux/x64/release/bundle/. flatpak/bundle/
+          mkdir -p dist
+          flatpak-builder \
+            --force-clean \
+            --install-deps-from=flathub \
+            --repo=flatpak/repo \
+            flatpak/.flatpak-builder \
+            flatpak/com.openfoldr.OpenFoldr.yaml
+          flatpak build-bundle \
+            flatpak/repo \
+            dist/openfoldr-${{ needs.prepare-release.outputs.semver }}-linux.flatpak \
+            com.openfoldr.OpenFoldr
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-flatpak
+          path: dist/*.flatpak
+          if-no-files-found: error
+          retention-days: 7
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi,aarch64-linux-android,x86_64-linux-android
+
+      - name: Prime rustup targets
+        run: |
+          rustup target add armv7-linux-androideabi
+          rustup target add aarch64-linux-android
+          rustup target add x86_64-linux-android
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/openfoldr-${{ needs.prepare-release.outputs.semver }}-android.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-apk
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows Installer And Portable ZIP
+    runs-on: windows-latest
+    needs: prepare-release
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows bundle
+        run: flutter build windows --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          @"
+          [Setup]
+          AppId={{C7C6C7F8-6B95-4EA4-A45D-6A9F1FAF112A}
+          AppName=OpenFoldr
+          AppVersion=${{ needs.prepare-release.outputs.semver }}
+          AppPublisher=OpenFoldr
+          DefaultDirName={autopf}\OpenFoldr
+          DefaultGroupName=OpenFoldr
+          DisableProgramGroupPage=yes
+          OutputDir=dist
+          OutputBaseFilename=openfoldr-${{ needs.prepare-release.outputs.semver }}-windows-setup
+          Compression=lzma
+          SolidCompression=yes
+          WizardStyle=modern
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "build\\windows\\x64\\runner\\Release\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\\OpenFoldr"; Filename: "{app}\\open_foldr.exe"
+          Name: "{autodesktop}\\OpenFoldr"; Filename: "{app}\\open_foldr.exe"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\\open_foldr.exe"; Description: "Launch OpenFoldr"; Flags: nowait postinstall skipifsilent
+          "@ | Set-Content -Path installer.iss -Encoding UTF8
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/openfoldr-${{ needs.prepare-release.outputs.semver }}-windows-portable.zip -Force
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          path: dist/*-windows-setup.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-release
+      - build-flatpak
+      - build-android
+      - build-windows
+    timeout-minutes: 15
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          prerelease: ${{ needs.prepare-release.outputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            dist/linux-flatpak/*.flatpak
+            dist/android-apk/*.apk
+            dist/windows-installer/*.exe
+            dist/windows-portable/*.zip
