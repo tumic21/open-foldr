@@ -47,7 +47,8 @@ dependencies:
   web_socket_channel: ^3.0.1
   # Persistence
   shared_preferences: ^2.3.5
-  re_editor: ^0.8.0
+  re_editor:
+    path: third_party/re_editor
   re_highlight: ^0.0.3
   pdfx: ^2.9.2
   super_drag_and_drop: ^0.9.1

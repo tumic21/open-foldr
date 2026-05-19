@@ -356,7 +356,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   }
 
   CodeHighlightTheme _buildHighlightTheme() => CodeHighlightTheme(
-        languages: {_lang.name.toLowerCase(): _lang.mode.themeMode},
+      languages: {_lang.name.toLowerCase(): _lang.mode},
         theme: _darkTheme ? atomOneDarkTheme : atomOneLightTheme,
       );
 
