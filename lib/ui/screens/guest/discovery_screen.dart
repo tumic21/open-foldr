@@ -175,9 +175,12 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         SizedBox(width: 8),
-                        Text(
-                          'Scanning... found hosts are shown immediately',
-                          style: TextStyle(color: Colors.grey),
+                        Expanded(
+                          child: Text(
+                            'Scanning...',
+                            style: TextStyle(color: Colors.grey),
+                            softWrap: true,
+                          ),
                         ),
                       ],
                     ),
