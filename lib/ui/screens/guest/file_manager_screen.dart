@@ -282,6 +282,28 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
   }
 
+  /// Refreshes the current directory entries without switching to loading UI.
+  ///
+  /// Used after write actions so the list updates in place and keeps scroll
+  /// position stable.
+  Future<void> _refreshEntriesInPlace() async {
+    final result = await widget.client.listEntries(
+      widget.alias,
+      _state.currentPath,
+    );
+    if (!mounted) return;
+    if (result.isOk) {
+      _state.setEntries(result.unwrap);
+    } else if (result.errorCode == 'UNAUTHORIZED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session expired. Reconnecting…')),
+      );
+      Navigator.of(context).pop();
+    } else {
+      _showResultError(result, operation: 'refresh this folder');
+    }
+  }
+
   /// (Re)starts the [WatchClient] for the current directory.
   ///
   /// Disposes any existing watcher before creating a new one so navigation
@@ -296,7 +318,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       if (!mounted) return;
       _watchReloadDebounce?.cancel();
       _watchReloadDebounce = Timer(const Duration(milliseconds: 180), () {
-        if (mounted) _load();
+        if (mounted) _refreshEntriesInPlace();
       });
     });
     _watcher!.connect();
@@ -337,7 +359,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     if (!mounted) return;
 
     if (result.isOk) {
-      await _load();
+      await _refreshEntriesInPlace();
       return;
     }
 
@@ -396,7 +418,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     );
     if (!mounted) return;
     if (result.isOk) {
-      await _load();
+      await _refreshEntriesInPlace();
       return;
     }
     if (result.errorCode == 'VERSION_CONFLICT') {
@@ -653,7 +675,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final result = await widget.client.deleteItem(widget.alias, remotePath);
     if (!mounted) return;
     if (result.isOk) {
-      await _load();
+      _state.removeEntry(remotePath);
+      _lastSelectedPath = null;
     } else {
       _showResultError(result, operation: 'delete this item');
     }
@@ -677,7 +700,10 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     );
     if (!mounted) return;
     if (result.isOk) {
-      await _load();
+      _state.renameEntry(entry.path, newPath);
+      if (_lastSelectedPath == entry.path) {
+        _lastSelectedPath = newPath;
+      }
     } else {
       _showResultError(result, operation: 'rename this item');
     }
@@ -752,7 +778,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     );
     if (!mounted) return;
     if (result.isOk) {
-      await _load();
+      await _refreshEntriesInPlace();
     } else {
       _showResultError(result, operation: 'create this file');
     }
@@ -809,7 +835,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     final result = await widget.client.mkdir(widget.alias, path);
     if (!mounted) return;
     if (result.isOk) {
-      await _load();
+      await _refreshEntriesInPlace();
     } else {
       _showResultError(result, operation: 'create this folder');
     }
@@ -1465,7 +1491,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
     if (clip.operation == 'cut') _state.clearClipboard();
     _state.clearSelection();
-    await _load();
+    await _refreshEntriesInPlace();
   }
 
   Future<void> _deleteSelected() async {
@@ -1487,7 +1513,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _showBatchFailures(result.unwrap, operation: 'delete selected items');
 
     _state.clearSelection();
-    await _load();
+    await _refreshEntriesInPlace();
   }
 
   void _showBatchFailures(List<BatchResult> results, {required String operation}) {

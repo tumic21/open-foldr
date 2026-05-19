@@ -50,7 +50,7 @@ extension _FileManagerScreenDragDrop on _FileManagerScreenState {
 
     _showBatchFailures(result.unwrap, operation: 'move these items');
     _state.clearSelection();
-    await _load();
+    await _refreshEntriesInPlace();
   }
 
   Future<void> _uploadDroppedFiles(List<String> filePaths) async {
@@ -193,7 +193,7 @@ extension _FileManagerScreenDragDrop on _FileManagerScreenState {
         }
       }
 
-      await _load();
+      await _refreshEntriesInPlace();
     } finally {
       uploadManager.dispose();
       if (mounted) {

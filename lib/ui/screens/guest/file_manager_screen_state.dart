@@ -65,6 +65,61 @@ class FileManagerState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeEntry(String path) {
+    final before = entries.length;
+    entries.removeWhere((e) => e.path == path);
+    final removed = entries.length != before;
+    if (!removed) return;
+
+    selectedPaths.remove(path);
+    if (clipboard != null) {
+      final filtered = clipboard!.items.where((item) => item != path).toList();
+      clipboard = filtered.isEmpty
+          ? null
+          : ClipboardState(
+              operation: clipboard!.operation,
+              items: List.unmodifiable(filtered),
+              sourceAlias: clipboard!.sourceAlias,
+            );
+    }
+    entries = _sortedEntries(entries);
+    notifyListeners();
+  }
+
+  void renameEntry(String fromPath, String toPath) {
+    final index = entries.indexWhere((e) => e.path == fromPath);
+    if (index < 0) return;
+
+    final old = entries[index];
+    final newName = toPath.contains('/')
+        ? toPath.substring(toPath.lastIndexOf('/') + 1)
+        : toPath;
+    entries[index] = FileEntry(
+      name: newName,
+      path: toPath,
+      kind: old.kind,
+      size: old.size,
+      modifiedAt: old.modifiedAt,
+    );
+
+    if (selectedPaths.remove(fromPath)) {
+      selectedPaths.add(toPath);
+    }
+    if (clipboard != null) {
+      final updated = clipboard!.items
+          .map((item) => item == fromPath ? toPath : item)
+          .toList();
+      clipboard = ClipboardState(
+        operation: clipboard!.operation,
+        items: List.unmodifiable(updated),
+        sourceAlias: clipboard!.sourceAlias,
+      );
+    }
+
+    entries = _sortedEntries(entries);
+    notifyListeners();
+  }
+
   void setError(String msg) {
     error = msg;
     isLoading = false;
