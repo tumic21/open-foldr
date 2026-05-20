@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../client/file_client.dart';
 import '../../../client/watch_client.dart';
 import '../../../core/transfer_manager.dart';
+import '../../services/download_folder_validation.dart';
 import '../../services/friendly_error_message.dart';
 import '../../widgets/file_manager/breadcrumb_bar.dart';
 import '../../widgets/file_manager/dialogs/confirm_delete_dialog.dart';
@@ -85,6 +86,7 @@ class FileManagerScreen extends StatefulWidget {
   ///
   /// Pass `watcherFactory: null` in tests to disable real-time watching.
   final WatchClient? Function(String watchPath)? watcherFactory;
+  final Future<String?> Function() directoryPicker;
 
   static const _unsetFactory = Object();
 
@@ -95,8 +97,10 @@ class FileManagerScreen extends StatefulWidget {
     required this.role,
     this.initialPath = '/',
     this.onOpenFile,
+    Future<String?> Function()? directoryPicker,
     Object? watcherFactory = _unsetFactory,
-  }) : watcherFactory = watcherFactory == _unsetFactory
+  }) : directoryPicker = directoryPicker ?? FilePicker.getDirectoryPath,
+       watcherFactory = watcherFactory == _unsetFactory
            ? ((watchPath) => WatchClient(
                baseUrl: client.baseUrl,
                sessionToken: client.sessionToken,
@@ -236,6 +240,79 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     await prefs.setString(_downloadFolderPrefKey, normalized);
     if (!mounted) return;
     setState(() => _downloadFolder = normalized);
+  }
+
+  Future<String?> _promptForAnotherDownloadFolder({
+    required String currentFolder,
+    required String reason,
+  }) async {
+    var selectedFolder = currentFolder;
+    final shouldUse = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Download folder unavailable'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(reason),
+              const SizedBox(height: 8),
+              Text(
+                selectedFolder,
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () async {
+                  final selected = await widget.directoryPicker();
+                  if (selected == null || selected.trim().isEmpty) return;
+                  setDialogState(() {
+                    selectedFolder = selected.trim();
+                  });
+                },
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Choose another folder'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel download'),
+            ),
+            FilledButton(
+              onPressed: selectedFolder.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, true),
+              child: const Text('Use this folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (shouldUse != true) return null;
+    final nextFolder = selectedFolder.trim();
+    if (nextFolder.isEmpty) return null;
+    await _saveDownloadFolder(nextFolder);
+    return nextFolder;
+  }
+
+  Future<String?> _resolveWritableDownloadFolder() async {
+    var folder = (_downloadFolder ?? _defaultDownloadFolder()).trim();
+    while (mounted) {
+      final issue = await validateDownloadFolderForWrite(folder);
+      if (issue == null) return folder;
+
+      final replacement = await _promptForAnotherDownloadFolder(
+        currentFolder: folder,
+        reason: issue,
+      );
+      if (replacement == null) return null;
+      folder = replacement;
+    }
+    return null;
   }
 
   // ─── Navigation ────────────────────────────────────────────────────────────
@@ -393,9 +470,8 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
             : fileName;
         final newFileName =
             '${base}_${DateTime.now().millisecondsSinceEpoch}$ext';
-        final newRemotePath = remotePath.substring(0, remotePath.lastIndexOf('/')) +
-            '/' +
-            newFileName;
+        final newRemotePath =
+          '${remotePath.substring(0, remotePath.lastIndexOf('/'))}/$newFileName';
         await _performUpload(newRemotePath, bytes, newFileName);
         return;
       }
@@ -520,16 +596,48 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         },
       );
       if (!mounted) return;
-
-      final folder = _downloadFolder ?? _defaultDownloadFolder();
-      final dir = Directory(folder);
-      if (!dir.existsSync()) {
-        await dir.create(recursive: true);
-      }
       final fileName = p.basename(name.isNotEmpty ? name : remotePath);
-      final outputPath = p.join(folder, fileName);
-      await File(outputPath).writeAsBytes(bytes, flush: true);
-      if (!mounted) return;
+
+      String? outputPath;
+      while (mounted && outputPath == null) {
+        final folder = await _resolveWritableDownloadFolder();
+        if (folder == null) {
+          if (!mounted) return;
+          setState(() {
+            _downloadProgress.remove(remotePath);
+            _downloadControls.remove(remotePath);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download cancelled.')),
+          );
+          return;
+        }
+
+        final candidatePath = p.join(folder, fileName);
+        try {
+          await File(candidatePath).writeAsBytes(bytes, flush: true);
+          outputPath = candidatePath;
+        } on FileSystemException catch (e) {
+          final replacement = await _promptForAnotherDownloadFolder(
+            currentFolder: folder,
+            reason: e.osError?.message ??
+                'OpenFoldr cannot write to this folder. Choose a writable folder.',
+          );
+          if (replacement == null) {
+            if (!mounted) return;
+            setState(() {
+              _downloadProgress.remove(remotePath);
+              _downloadControls.remove(remotePath);
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Download cancelled.')),
+            );
+            return;
+          }
+        }
+      }
+
+      if (outputPath == null || !mounted) return;
 
       setState(() {
         _updateDownloadProgressItem(remotePath, name, 1, complete: true);
@@ -870,7 +978,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: () async {
-                  final selected = await FilePicker.getDirectoryPath();
+                  final selected = await widget.directoryPicker();
                   if (selected != null && selected.isNotEmpty) {
                     controller.text = selected;
                   }
