@@ -1375,15 +1375,18 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     }
 
     if (_state.viewMode == ViewMode.grid) {
+      final childAspectRatio = (Platform.isAndroid || Platform.isIOS)
+          ? 0.835
+          : 0.85;
       return RefreshIndicator(
         onRefresh: _load,
         child: GridView.builder(
           padding: const EdgeInsets.all(8),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 140,
             mainAxisSpacing: 4,
             crossAxisSpacing: 4,
-            childAspectRatio: 0.85,
+            childAspectRatio: childAspectRatio,
           ),
           itemCount: visible.length,
           itemBuilder: (_, i) {

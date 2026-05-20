@@ -25,6 +25,35 @@ void main() {
     );
   }
 
+  Widget wrapWithTextScale(Widget child, double textScale) {
+    return MaterialApp(
+      home: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: Scaffold(
+          body: Center(
+            child: SizedBox(width: 132, height: 160, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget wrapCompactPhone(Widget child) {
+    return MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: Size(360, 740),
+          textScaler: TextScaler.linear(1.0),
+        ),
+        child: Scaffold(
+          body: Center(
+            child: SizedBox(width: 132, height: 160, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+
   testWidgets('grid tile does not overflow with long file names', (
     tester,
   ) async {
@@ -38,6 +67,59 @@ void main() {
 
     await tester.pumpWidget(
       wrap(
+        FileGridTile(
+          client: makeClient(),
+          alias: 'downloads',
+          entry: entry,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(FileGridTile), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('grid tile avoids overflow with larger text scaling', (
+    tester,
+  ) async {
+    final entry = FileEntry(
+      name: 'client_secret_89486760377.apps.googleusercontent.com.json',
+      path: '/client_secret_89486760377.apps.googleusercontent.com.json',
+      kind: 'file',
+      size: 123,
+      modifiedAt: DateTime(2026, 5, 20),
+    );
+
+    await tester.pumpWidget(
+      wrapWithTextScale(
+        FileGridTile(
+          client: makeClient(),
+          alias: 'downloads',
+          entry: entry,
+        ),
+        1.3,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(FileGridTile), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('grid tile avoids overflow on compact phone constraints', (
+    tester,
+  ) async {
+    final entry = FileEntry(
+      name: 'immich-go_Linux_x86_64.tar.gz',
+      path: '/immich-go_Linux_x86_64.tar.gz',
+      kind: 'file',
+      size: 123,
+      modifiedAt: DateTime(2026, 5, 20),
+    );
+
+    await tester.pumpWidget(
+      wrapCompactPhone(
         FileGridTile(
           client: makeClient(),
           alias: 'downloads',
