@@ -55,14 +55,13 @@ class FileGridTile extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: SizedBox(
-                  height: 24,
-                  child: showCheckbox
-                      ? Icon(
+              SizedBox(
+                height: 24,
+                child: showCheckbox
+                    ? Align(
+                        alignment: Alignment.topRight,
+                        child: Icon(
                           selected
                               ? Icons.check_circle
                               : Icons.radio_button_unchecked,
@@ -70,9 +69,9 @@ class FileGridTile extends StatelessWidget {
                               ? theme.colorScheme.primary
                               : theme.colorScheme.outline,
                           size: 20,
-                        )
-                      : null,
-                ),
+                        ),
+                      )
+                    : null,
               ),
               FileThumbnail(
                 client: client,
@@ -83,20 +82,30 @@ class FileGridTile extends StatelessWidget {
                 fit: BoxFit.cover,
               ),
               const SizedBox(height: 6),
-              Text(
-                entry.name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-              if (!entry.isDirectory)
-                Text(
-                  DateFormat.yMMMd().format(entry.modifiedAt),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      entry.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (!entry.isDirectory)
+                      Text(
+                        DateFormat.yMMMd().format(entry.modifiedAt),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         ),
