@@ -72,6 +72,28 @@ flatpak run com.openfoldr.OpenFoldr
 2. On one device, start sharing a folder.
 3. On the other device, connect to the host and browse or transfer files.
 
+## Screenshots
+
+### Desktop
+
+| Home screen | Host session |
+|---|---|
+| ![Desktop: home screen](screenshots/Screenshot_20260519_094659.png) | ![Desktop: active host session](screenshots/Screenshot_20260519_094733.png) |
+
+| Join share | File manager list |
+|---|---|
+| ![Desktop: join a share](screenshots/Screenshot_20260519_105110.png) | ![Desktop: file manager list view](screenshots/Screenshot_20260519_110251.png) |
+
+### Android
+
+| Home screen | Connect and roots |
+|---|---|
+| <img src="screenshots/Screenshot_20260521_083942.jpg" alt="Android: home screen" width="260" /> | <img src="screenshots/Screenshot_20260520_091453.jpg" alt="Android: connected roots" width="260" /> |
+
+| Grid view | Image preview |
+|---|---|
+| <img src="screenshots/Screenshot_20260520_151216.jpg" alt="Android: file manager grid" width="260" /> | <img src="screenshots/Screenshot_20260520_091519.jpg" alt="Android: image preview" width="260" /> |
+
 ## Troubleshooting
 
 - Ensure both devices are on the same LAN.
