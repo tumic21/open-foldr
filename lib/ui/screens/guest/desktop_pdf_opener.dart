@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
-enum DesktopPdfPlatform { linux, macos, windows }
+enum DesktopPdfPlatform { linux, macos, windows, unsupported }
 
 class DesktopOpenCommand {
   final String executable;
@@ -56,7 +56,7 @@ class DesktopPdfOpener {
     if (Platform.isLinux) return DesktopPdfPlatform.linux;
     if (Platform.isMacOS) return DesktopPdfPlatform.macos;
     if (Platform.isWindows) return DesktopPdfPlatform.windows;
-    throw const PdfOpenException('Desktop PDF opening is unsupported here.');
+    return DesktopPdfPlatform.unsupported;
   }
 
   Future<Directory> _ensureTempDirectory() async {
@@ -87,6 +87,8 @@ DesktopOpenCommand buildDesktopOpenCommand(
         executable: 'cmd',
         arguments: ['/c', 'start', '', filePath],
       );
+    case DesktopPdfPlatform.unsupported:
+      throw const PdfOpenException('Desktop PDF opening is unsupported here.');
   }
 }
 

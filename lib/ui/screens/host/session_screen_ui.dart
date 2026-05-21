@@ -311,41 +311,15 @@ extension _SessionScreenUI on _SessionScreenState {
                           Row(
                             children: [
                               Expanded(
-                                child: _buildRoleTooltip(
-                                  DropdownMenu<Role>(
-                                    initialSelection: r.minimumRole,
-                                    width: double.infinity,
-                                    inputDecorationTheme: InputDecorationTheme(
-                                      isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                      filled: true,
-                                    ),
-                                    textStyle: Theme.of(context).textTheme.bodyMedium,
-                                    dropdownMenuEntries: Role.values
-                                        .map(
-                                          (role) => DropdownMenuEntry(
-                                            value: role,
-                                            label: role.displayName,
-                                          ),
-                                        )
-                                        .toList(),
-                                    onSelected: (role) {
-                                      if (role == null) return;
-                                      _changeMinimumRole(r, role);
-                                    },
-                                  ),
+                                child: _buildRoleSelector(
+                                  selectedRole: r.minimumRole,
+                                  width: double.infinity,
+                                  onSelected: (role) => _changeMinimumRole(r, role),
                                 ),
                               ),
-                              _buildRoleTooltip(
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                              _buildRolePermissionTooltip(
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 4),
                                   child: Icon(
                                     Icons.info_outline,
                                     size: 18,
@@ -383,39 +357,13 @@ extension _SessionScreenUI on _SessionScreenState {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildRoleTooltip(
-                          DropdownMenu<Role>(
-                            initialSelection: r.minimumRole,
-                            width: 130,
-                            inputDecorationTheme: InputDecorationTheme(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                            ),
-                            textStyle: Theme.of(context).textTheme.bodyMedium,
-                            dropdownMenuEntries: Role.values
-                                .map(
-                                  (role) => DropdownMenuEntry(
-                                    value: role,
-                                    label: role.displayName,
-                                  ),
-                                )
-                                .toList(),
-                            onSelected: (role) {
-                              if (role == null) return;
-                              _changeMinimumRole(r, role);
-                            },
-                          ),
+                        _buildRoleSelector(
+                          selectedRole: r.minimumRole,
+                          width: 130,
+                          onSelected: (role) => _changeMinimumRole(r, role),
                         ),
-                        _buildRoleTooltip(
-                          const Padding(
+                        _buildRolePermissionTooltip(
+                          child: const Padding(
                             padding: EdgeInsets.only(left: 4),
                             child: Icon(
                               Icons.info_outline,
@@ -437,6 +385,79 @@ extension _SessionScreenUI on _SessionScreenState {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildRoleSelector({
+    required Role selectedRole,
+    required double width,
+    required ValueChanged<Role> onSelected,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<Role>(
+          value: selectedRole,
+          isExpanded: true,
+          borderRadius: BorderRadius.circular(12),
+          style: theme.textTheme.bodyMedium,
+          items: Role.values
+              .map(
+                (role) => DropdownMenuItem<Role>(
+                  value: role,
+                  child: Text(role.displayName),
+                ),
+              )
+              .toList(),
+          onChanged: (role) {
+            if (role == null) return;
+            onSelected(role);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRolePermissionTooltip({required Widget child}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final tooltipBackground = isDark
+        ? const Color(0xFFF3F4F6)
+        : const Color(0xFF1F2937);
+    final tooltipTextColor = isDark
+        ? const Color(0xFF111827)
+        : const Color(0xFFF9FAFB);
+
+    final textStyle = theme.textTheme.bodySmall?.copyWith(
+          fontFamily: 'monospace',
+          height: 1.45,
+          color: tooltipTextColor,
+        );
+
+    return Tooltip(
+      triggerMode: TooltipTriggerMode.tap,
+      decoration: BoxDecoration(
+        color: tooltipBackground,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      richMessage: TextSpan(
+        style: textStyle,
+        text:
+            'Role    Read  Write  Delete\n'
+            'Viewer  yes   no     no\n'
+            'Editor  yes   yes    no\n'
+            'Owner   yes   yes    yes',
+      ),
+      child: child,
     );
   }
 
@@ -536,12 +557,4 @@ extension _SessionScreenUI on _SessionScreenState {
     );
   }
 
-  /// Helper: Build a tooltip-wrapped widget for role information
-  Widget _buildRoleTooltip(Widget child) {
-    return Tooltip(
-      message:
-          'Sets minimum permission level required for clients to access this folder',
-      child: child,
-    );
-  }
 }

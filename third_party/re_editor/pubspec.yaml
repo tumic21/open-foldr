@@ -1,0 +1,12 @@
+name: re_editor
+description: Local compatibility shim for open_foldr tests and editor UI.
+version: 0.8.0+openfoldr.1
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter

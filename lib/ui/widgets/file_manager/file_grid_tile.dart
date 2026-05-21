@@ -36,6 +36,7 @@ class FileGridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     // On desktop (onDoubleTap != null) hide the checkbox indicator and use a
     // stronger card colour for selection contrast instead.
     final bool useGesture = onDoubleTap != null;
@@ -52,53 +53,77 @@ class FileGridTile extends StatelessWidget {
       child: Card(
         color: cardColor,
         clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: SizedBox(
-                  height: 24,
-                  child: showCheckbox
-                      ? Icon(
-                          selected
-                              ? Icons.check_circle
-                              : Icons.radio_button_unchecked,
-                          color: selected
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.outline,
-                          size: 20,
-                        )
-                      : null,
-                ),
-              ),
-              FileThumbnail(
-                client: client,
-                alias: alias,
-                entry: entry,
-                size: 48,
-                requestSize: 128,
-                fit: BoxFit.cover,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                entry.name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-              if (!entry.isDirectory)
-                Text(
-                  DateFormat.yMMMd().format(entry.modifiedAt),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final shortestSide = MediaQuery.sizeOf(context).shortestSide;
+            final compactPhone = shortestSide < 420;
+            final thumbSize = constraints.maxHeight < 168 ? 42.0 : 48.0;
+            final showDate = !entry.isDirectory &&
+                !compactPhone &&
+                constraints.maxHeight >= 172 &&
+                textScale <= 1.15;
+            final nameMaxLines = showDate ? 2 : 3;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 20,
+                    child: showCheckbox
+                        ? Align(
+                            alignment: Alignment.topRight,
+                            child: Icon(
+                              selected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: selected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outline,
+                              size: 20,
+                            ),
+                          )
+                        : null,
                   ),
-                ),
-            ],
-          ),
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FileThumbnail(
+                            client: client,
+                            alias: alias,
+                            entry: entry,
+                            size: thumbSize,
+                            requestSize: 128,
+                            fit: BoxFit.cover,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            entry.name,
+                            textAlign: TextAlign.center,
+                            maxLines: nameMaxLines,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          if (showDate)
+                            Text(
+                              DateFormat.yMMMd().format(entry.modifiedAt),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
