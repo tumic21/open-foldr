@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../models/shared_root.dart';
 import '../../../models/role.dart';
 import '../../../server/server.dart';
+import '../../services/shared_folder_picker.dart';
 import 'session_screen.dart';
 
 class ShareSetupScreen extends StatefulWidget {
@@ -18,7 +18,7 @@ class _ShareSetupScreenState extends State<ShareSetupScreen> {
   bool _starting = false;
 
   Future<void> _addFolder() async {
-    final result = await FilePicker.getDirectoryPath();
+    final result = await selectSharedFolderPath(context);
     if (result == null) return;
     final alias = _deriveAlias(result);
     setState(() {

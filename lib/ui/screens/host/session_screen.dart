@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -13,6 +12,7 @@ import '../../../models/role.dart';
 import '../../../models/shared_root.dart';
 import '../../../server/server.dart';
 import '../../../server/activity/activity_log.dart';
+import '../../services/shared_folder_picker.dart';
 
 part 'session_screen_logic.dart';
 part 'session_screen_ui.dart';

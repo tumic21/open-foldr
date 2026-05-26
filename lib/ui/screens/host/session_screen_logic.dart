@@ -123,9 +123,9 @@ extension _SessionScreenLogic on _SessionScreenState {
     Navigator.pop(context);
   }
 
-  /// Add a new shared folder via file picker
+  /// Add a new shared folder.
   Future<void> _addSharedFolder() async {
-    final pickedPath = await FilePicker.getDirectoryPath();
+    final pickedPath = await selectSharedFolderPath(context);
     if (pickedPath == null) return;
 
     final alias = _deriveAlias(pickedPath);
